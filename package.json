@@ -2,8 +2,14 @@
   "name": "plug-code",
   "version": "1.0.2",
   "description": "",
-  "main": "index.js",
-  "types": "types/src/plug-code.d.ts",
+  "main": "src/plug-code.tsx",
+  "types": "types/plug-code.d.ts",
+  "exports": {
+    ".": {
+      "import": "./src/plug-code.tsx",
+      "require": "./src/plug-code.tsx"
+    }
+  },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "build:types": "tsc -p tsconfig.json"
