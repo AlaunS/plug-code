@@ -44,7 +44,14 @@ export class PlcAPI<S extends ObjectType> {
         }
     }
 
-    scope<T = any>(key: string & "root") {
+    scope<T = any>(key: string & "root"): {
+        get: () => T;
+        update: (updater: (draft: T) => void) => void;
+        connect: (renderer: (data: T) => React.ReactNode) => React.FC;
+        render: (slotName: string) => React.ReactNode | null;
+        receive: (context?: any) => any;
+        root: PlcAPI<S>;
+    } {
         return {
             get: (): T => this.getData(key),
 
@@ -58,8 +65,8 @@ export class PlcAPI<S extends ObjectType> {
 
             render: (slotName: string) => {
                 return this.connect(key, (localData) => {
-                    return this.pipeline.render(slotName, localData);
-                });
+                    return this.pipeline.render(slotName, localData) as React.ReactNode;
+                }) as any;
             },
 
             receive: (context: any = {}) => {
