@@ -11,6 +11,6 @@ You are welcome to use Plug&Code in your projects, **personal or commercial**, a
 You can install the framework via npm or yarn:
 
 ```bash
-npm install @alaumo/plug-code
+npm install plug-code
 # or
-yarn add @alaumo/plug-code
+yarn add plug-code
