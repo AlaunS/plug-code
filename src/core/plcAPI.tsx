@@ -3,22 +3,57 @@ import type { ObjectType } from "../types/general";
 import { useEffect, useState } from "react";
 import { PlcPipeline } from "./plcPipeline";
 import type { PlcStore } from "./plcStore";
-import type { transformerType } from "../types/api";
+import type { CommandFn, transformerType } from "../types/api";
+
+import type { ChannelRegistry, CommandRegistry, SlotRegistry } from "../types/registry";
+
+type ChannelKey = keyof ChannelRegistry | (string & {});
+type ChannelData<K> = K extends keyof ChannelRegistry ? ChannelRegistry[K] : any;
+
+type CommandKey = keyof CommandRegistry | (string & {});
+type CommandPayload<K> = K extends keyof CommandRegistry
+    ? (CommandRegistry[K] extends { payload: infer P } ? P : any)
+    : any;
+type CommandResult<K> = K extends keyof CommandRegistry
+    ? (CommandRegistry[K] extends { result: infer R } ? R : any)
+    : any;
+
+type SlotKey = keyof SlotRegistry | (string & {});
+
 
 export class PlcAPI<S extends ObjectType> {
     private store: PlcStore<S>
     private pipeline: PlcPipeline<S>
     private substores = new Map<string, any>()
-    private transformers: transformerType[] = []
+
+    private transformers = new Map<string, transformerType[]>()
+    private commands = new Map<string, CommandFn>();
+    private installedFeatures = new Set<string>();
 
     constructor(store: PlcStore<S>) {
         this.store = store
         this.pipeline = new PlcPipeline(store)
     }
 
-    register(slot: string, node: () => React.ReactNode): void;
-    register<K extends string>(slot: string, node: (data: any) => React.ReactNode, dependencyKey: K): void;
-    register(slot: string, node: (data?: any) => React.ReactNode, dependencyKey?: string) {
+    createFeature(name: string, setupFn: (api: PlcAPI<S>) => void): PlcAPI<S> {
+        if (this.installedFeatures.has(name)) {
+            console.warn(`[PlcFramework] La feature '${name}' ya fue registrada. Se omitirá para evitar conflictos.`);
+            return this;
+        }
+
+        try {
+            setupFn(this);
+            this.installedFeatures.add(name);
+        } catch (error) {
+            console.error(`[PlcFramework] 💥 Error crítico inicializando la feature '${name}':`, error);
+        }
+
+        return this;
+    }
+
+    register(slot: SlotKey, node: () => React.ReactNode): void;
+    register<K extends string>(slot: SlotKey, node: (data: any) => React.ReactNode, dependencyKey: K): void;
+    register(slot: SlotKey, node: (data?: any) => React.ReactNode, dependencyKey?: string) {
         if (dependencyKey) {
             const ConnectedWrapper = () => {
                 const [data, setData] = useState(() => this.substores.get(dependencyKey));
@@ -34,12 +69,12 @@ export class PlcAPI<S extends ObjectType> {
             };
 
             this.store.batch(() => {
-                this.pipeline.register(slot, () => <ConnectedWrapper />);
+                this.pipeline.register(slot as string, () => <ConnectedWrapper />);
             });
         }
         else {
             this.store.batch(() => {
-                this.pipeline.register(slot, node as () => React.ReactNode);
+                this.pipeline.register(slot as string, node as () => React.ReactNode);
             });
         }
     }
@@ -48,7 +83,7 @@ export class PlcAPI<S extends ObjectType> {
         get: () => T;
         update: (updater: (draft: T) => void) => void;
         connect: (renderer: (data: T) => React.ReactNode) => React.FC;
-        render: (slotName: string) => React.ReactNode | null;
+        render: (slotName: SlotKey) => React.ReactNode | null;
         receive: (context?: any) => any;
         root: PlcAPI<S>;
     } {
@@ -63,15 +98,15 @@ export class PlcAPI<S extends ObjectType> {
                 return this.connect(key, renderer);
             },
 
-            render: (slotName: string) => {
+            render: (slotName: SlotKey) => {
                 return this.connect(key, (localData) => {
-                    return this.pipeline.render(slotName, localData) as React.ReactNode;
+                    return this.pipeline.render(slotName as string, localData) as React.ReactNode;
                 }) as any;
             },
 
             receive: (context: any = {}) => {
                 const currentData = this.getData(key);
-                return this.receive(currentData, context);
+                return this.receive(key as any, currentData, context);
             },
 
             root: this
@@ -97,43 +132,105 @@ export class PlcAPI<S extends ObjectType> {
         };
     }
 
-    wrap(slot: string, fn: (next: () => React.ReactNode) => () => React.ReactNode) {
+    wrap(slot: SlotKey, fn: (next: () => React.ReactNode) => () => React.ReactNode) {
         this.store.batch(() => {
-            this.pipeline.wrap(slot, fn)
+            this.pipeline.wrap(slot as string, fn)
         })
     }
 
-    after(slot: string, node: () => React.ReactNode) {
+    after(slot: SlotKey, node: () => React.ReactNode) {
         this.store.batch(() => {
-            this.pipeline.register(slot, node)
+            this.pipeline.register(slot as string, node)
         })
     }
 
-    render(slot: string) {
-        return this.pipeline.render(slot)
+    render(slot: SlotKey) {
+        return this.pipeline.render(slot as string)
     }
 
-    invalidate(slot?: string) {
-        this.pipeline.invalidate(slot)
+    invalidate(slot?: SlotKey) {
+        this.pipeline.invalidate(slot as string)
     }
 
-    send(id: string, fn: (data: any, context: any) => any, priority: number) {
-        this.transformers.push({ id, priority, fn });
-        this.transformers.sort((a, b) => a.priority - b.priority);
+    send<K extends ChannelKey>(
+        channel: K,
+        id: string,
+        fn: (data: ChannelData<K>, context: any) => ChannelData<K>,
+        priority: number = 0
+    ) {
+        const channelStr = channel as string;
+        if (!this.transformers.has(channelStr)) {
+            this.transformers.set(channelStr, []);
+        }
+
+        const channelList = this.transformers.get(channelStr)!;
+
+        const existingIdx = channelList.findIndex(t => t.id === id);
+        if (existingIdx >= 0) {
+            channelList[existingIdx] = { id, priority, fn };
+        } else {
+            channelList.push({ id, priority, fn });
+        }
+
+        channelList.sort((a, b) => a.priority - b.priority);
     }
 
-    receive(initialData: any, context: any = {}) {
+    receive<K extends ChannelKey>(
+        channel: K,
+        initialData: ChannelData<K>,
+        context: any = {}
+    ): ChannelData<K> {
         let currentData = initialData;
+        const channelList = this.transformers.get(channel as string) || [];
 
-        for (const transformer of this.transformers) {
+        for (const transformer of channelList) {
             try {
                 currentData = transformer.fn(currentData, context);
             } catch (error) {
-                console.error(`[Pipeline] Error en transformador '${transformer.id}':`, error);
+                console.error(`[PlcAPI] Error en transform '${channel as string}/${transformer.id}':`, error);
             }
         }
 
-        return currentData;
+        return currentData as ChannelData<K>;
+    }
+
+    registerCommand<K extends CommandKey>(
+        id: K,
+        fn: CommandFn<CommandPayload<K>, CommandResult<K>>
+    ) {
+        if (this.commands.has(id as string)) {
+            console.warn(`[PlcAPI] Sobrescribiendo comando '${id as string}'`);
+        }
+        this.commands.set(id as string, fn as any);
+    }
+
+    wrapCommand<K extends CommandKey>(
+        id: K,
+        wrapper: (next: CommandFn<CommandPayload<K>, CommandResult<K>>) => CommandFn<CommandPayload<K>, CommandResult<K>>
+    ) {
+        const currentFn = this.commands.get(id as string);
+        if (!currentFn) {
+            console.error(`[PlcAPI] No se puede envolver '${id as string}', comando no existe.`);
+            return;
+        }
+        this.commands.set(id as string, wrapper(currentFn) as any);
+    }
+
+    async execute<K extends CommandKey>(
+        id: K,
+        payload?: CommandPayload<K>
+    ): Promise<CommandResult<K>> {
+        const fn = this.commands.get(id as string);
+        if (!fn) {
+            throw new Error(`[PlcAPI] Comando '${id as string}' no encontrado.`);
+        }
+
+        try {
+            return await fn(payload);
+        } catch (error) {
+            console.error(`[PlcAPI] Error ejecutando '${id as string}':`, error);
+            throw error;
+        }
     }
 
     getData(key: string): any {

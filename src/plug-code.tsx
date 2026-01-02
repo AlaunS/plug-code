@@ -1,15 +1,16 @@
 import { enableMapSet } from "immer";
 import type { ObjectType } from "./types/general";
-import type { FeatureType } from "./types/features";
 import { PlcAPI } from "./core/plcAPI";
 import { useEffect, useMemo, useState } from "react";
 import { PlcStore } from "./core/plcStore";
 
-enableMapSet()
-export function createPlugAndCode<S extends ObjectType>(features: FeatureType<S>[]) {
+enableMapSet();
+
+export function createPlugAndCode<S extends ObjectType>(
+    setupSystem: (api: PlcAPI<S>) => void
+) {
     const FeatureHost = ({ api, children }: { api: PlcAPI<any>, children?: React.ReactNode }) => (
         <>
-            {/* Renderizamos el slot principal */}
             {api.render("root")}
             {children}
         </>
@@ -32,9 +33,7 @@ export function createPlugAndCode<S extends ObjectType>(features: FeatureType<S>
 
             api.createData("root", initialProps);
 
-            for (const feature of features) {
-                feature.setup?.(api as any);
-            }
+            setupSystem(api as unknown as PlcAPI<S>);
 
             return api;
         }, []);
