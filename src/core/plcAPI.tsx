@@ -37,7 +37,7 @@ export class PlcAPI<S extends ObjectType> {
 
     createFeature(name: string, setupFn: (api: PlcAPI<S>) => void): PlcAPI<S> {
         if (this.installedFeatures.has(name)) {
-            console.warn(`[PlcFramework] La feature '${name}' ya fue registrada. Se omitirá para evitar conflictos.`);
+            console.warn(`[PlcFramework] Feature '${name}' is already registered. It will be skipped to avoid conflicts.`);
             return this;
         }
 
@@ -45,7 +45,7 @@ export class PlcAPI<S extends ObjectType> {
             setupFn(this);
             this.installedFeatures.add(name);
         } catch (error) {
-            console.error(`[PlcFramework] 💥 Error crítico inicializando la feature '${name}':`, error);
+            console.error(`[PlcFramework] 💥 Critical error initializing feature '${name}':`, error);
         }
 
         return this;
@@ -187,7 +187,7 @@ export class PlcAPI<S extends ObjectType> {
             try {
                 currentData = transformer.fn(currentData, context);
             } catch (error) {
-                console.error(`[PlcAPI] Error en transform '${channel as string}/${transformer.id}':`, error);
+                console.error(`[PlcAPI] Error in transform '${channel as string}/${transformer.id}':`, error);
             }
         }
 
@@ -199,7 +199,7 @@ export class PlcAPI<S extends ObjectType> {
         fn: CommandFn<CommandPayload<K>, CommandResult<K>>
     ) {
         if (this.commands.has(id as string)) {
-            console.warn(`[PlcAPI] Sobrescribiendo comando '${id as string}'`);
+            console.warn(`[PlcAPI] Overwriting command '${id as string}'`);
         }
         this.commands.set(id as string, fn as any);
     }
@@ -210,7 +210,7 @@ export class PlcAPI<S extends ObjectType> {
     ) {
         const currentFn = this.commands.get(id as string);
         if (!currentFn) {
-            console.error(`[PlcAPI] No se puede envolver '${id as string}', comando no existe.`);
+            console.error(`[PlcAPI] Cannot wrap '${id as string}', command does not exist.`);
             return;
         }
         this.commands.set(id as string, wrapper(currentFn) as any);
@@ -222,13 +222,13 @@ export class PlcAPI<S extends ObjectType> {
     ): Promise<CommandResult<K>> {
         const fn = this.commands.get(id as string);
         if (!fn) {
-            throw new Error(`[PlcAPI] Comando '${id as string}' no encontrado.`);
+            throw new Error(`[PlcAPI] Command '${id as string}' not found.`);
         }
 
         try {
             return await fn(payload);
         } catch (error) {
-            console.error(`[PlcAPI] Error ejecutando '${id as string}':`, error);
+            console.error(`[PlcAPI] Error executing '${id as string}':`, error);
             throw error;
         }
     }
