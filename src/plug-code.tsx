@@ -39,9 +39,7 @@ export function createPlugAndCode<S extends ObjectType>(
         }, []);
 
         useEffect(() => {
-            api.update("root", (draft: any) => {
-                Object.assign(draft, initialProps);
-            });
+            api.replace("root", initialProps)
         }, [initialProps, api]);
 
         const useSelector = <Result,>(selector: (state: any) => Result): Result => {

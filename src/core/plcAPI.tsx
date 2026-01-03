@@ -51,6 +51,18 @@ export class PlcAPI<S extends ObjectType> {
         return this;
     }
 
+    replace<K extends string>(key: K & "root", data: Partial<any>, slot?: string) {
+        const currentSub = this.substores.get(key) || {};
+        const newSub = { ...currentSub, ...data };
+
+        this.substores.set(key, newSub);
+        this.store.set(key as any, newSub);
+
+        if (slot) {
+            this.invalidate(slot);
+        }
+    }
+
     register(slot: SlotKey, node: () => React.ReactNode): void;
     register<K extends string>(slot: SlotKey, node: (data: any) => React.ReactNode, dependencyKey: K): void;
     register(slot: SlotKey, node: (data?: any) => React.ReactNode, dependencyKey?: string) {
