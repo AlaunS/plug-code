@@ -69,23 +69,33 @@ export class PlcAPI<S extends ObjectType> {
         calculator: () => any
     ) {
         let lastValue: any
+        let isComputing = false
 
         const runUpdate = () => {
-            const result = calculator()
-            lastValue = result
-            this.replace("root" as any, { [outputKey]: result })
+            if (isComputing) return
+
+            isComputing = true
+            try {
+                const result = calculator()
+                lastValue = result
+                this.replace("root" as any, { [outputKey]: result })
+            } finally {
+                isComputing = false
+            }
         }
 
-        // cálculo inicial inmediato
         runUpdate()
 
-        // suscripción a dependencias
         dependencies.forEach(dep => {
-            this.store.subscribe(dep as any, runUpdate)
+            this.store.subscribe(dep as any, () => {
+                if (isComputing) return
+                runUpdate()
+            })
         })
 
         return () => lastValue
     }
+
 
 
 
