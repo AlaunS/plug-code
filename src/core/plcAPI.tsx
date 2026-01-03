@@ -65,23 +65,26 @@ export class PlcAPI<S extends ObjectType> {
 
     derive<K extends string>(outputKey: K, dependencies: string[], calculator: () => any) {
         let isRunning = false;
+        let idleHandle: number | null = null;
 
         const runUpdate = () => {
             if (isRunning) return;
+            if (idleHandle) cancelIdleCallback(idleHandle);
 
-            isRunning = true;
-            try {
-                const result = calculator();
-                this.replace("root" as any, { [outputKey]: result });
-            } finally {
-                isRunning = false;
-            }
+            idleHandle = requestIdleCallback(() => {
+                isRunning = true;
+                try {
+                    const result = calculator();
+                    this.replace("root" as any, { [outputKey]: result });
+                } finally {
+                    isRunning = false;
+                    idleHandle = null;
+                }
+            }, { timeout: 100 });
         };
 
         dependencies.forEach(dep => {
-            this.store.subscribe(dep as any, () => {
-                runUpdate();
-            });
+            this.store.subscribe(dep as any, () => runUpdate());
         });
 
         runUpdate();
