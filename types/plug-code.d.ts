@@ -76,6 +76,8 @@ export declare class PlcAPI<S extends ObjectType> {
     createData<K extends string, T>(key: K, initialState: T): void;
 
     getData(key: string): any;
+    
+    derive<K extends string>(outputKey: K, dependencies: string[], calculator: () => any): void
 
     update<K extends keyof S>(key: string & "root", updater: (draft: any) => void, slot?: string): void;
 
