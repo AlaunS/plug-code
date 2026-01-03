@@ -70,34 +70,24 @@ export class PlcAPI<S extends ObjectType> {
     ) {
         let lastValue: any
 
-        let isRunning = false
-        let idleHandle: number | null = null
-
         const runUpdate = () => {
-            if (isRunning) return
-            if (idleHandle) cancelIdleCallback(idleHandle)
-
-            idleHandle = requestIdleCallback(() => {
-                isRunning = true
-                try {
-                    const result = calculator()
-                    lastValue = result
-                    this.replace("root" as any, { [outputKey]: result })
-                } finally {
-                    isRunning = false
-                    idleHandle = null
-                }
-            }, { timeout: 100 })
+            const result = calculator()
+            lastValue = result
+            this.replace("root" as any, { [outputKey]: result })
         }
 
-        dependencies.forEach(dep => {
-            this.store.subscribe(dep as any, () => runUpdate())
-        })
-
+        // cálculo inicial inmediato
         runUpdate()
+
+        // suscripción a dependencias
+        dependencies.forEach(dep => {
+            this.store.subscribe(dep as any, runUpdate)
+        })
 
         return () => lastValue
     }
+
+
 
     register(slot: SlotKey, node: () => React.ReactNode): void;
     register<K extends string>(slot: SlotKey, node: (data: any) => React.ReactNode, dependencyKey: K): void;
