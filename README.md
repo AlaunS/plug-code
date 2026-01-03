@@ -41,7 +41,7 @@ import { createPlugAndCode } from 'plug-code';
 export const { useSystemPlc, SystemPlcRoot } = createPlugAndCode((api) => {
   
   // Define a Sales Feature
-  api.feature("sales", (api) => {
+  api.createFuture("sales", (api) => {
     // Register a UI component into a slot
     api.register("header.cart", () => <CartIcon />);
 
@@ -53,7 +53,7 @@ export const { useSystemPlc, SystemPlcRoot } = createPlugAndCode((api) => {
   });
 
   // Define a Logger Feature that wraps existing logic
-  api.feature("logger", (api) => {
+  api.createFuture("logger", (api) => {
     api.wrapCommand("sales.checkout", (next) => async (items) => {
       console.log("Checkout started...");
       const result = await next(items);

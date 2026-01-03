@@ -4,7 +4,7 @@ import * as React from 'react';
 // Tipos Generales
 // ==========================================
 
-export type ObjectType = Record<string, any>;
+export declare type ObjectType = Record<string, any>;
 
 export type Slot = () => React.ReactNode;
 
@@ -52,7 +52,7 @@ export declare class PlcAPI<S extends ObjectType> {
      * @param name Identificador único para debugging y prevención de duplicados.
      * @param setupFn Función de configuración donde registras slots, comandos, etc.
      */
-    feature(name: string, setupFn: (api: PlcAPI<S>) => void): PlcAPI<S>;
+    createFuture(name: string, setupFn: (api: PlcAPI<S>) => void): PlcAPI<S>;
 
     // --- Gestión de UI (Slots & Rendering) ---
 
