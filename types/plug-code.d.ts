@@ -52,12 +52,12 @@ export declare class PlcAPI<S extends ObjectType> {
      * @param name Identificador único para debugging y prevención de duplicados.
      * @param setupFn Función de configuración donde registras slots, comandos, etc.
      */
-    createFuture(name: string, setupFn: (api: PlcAPI<S>) => void): PlcAPI<S>;
+    createFeature(name: string, setupFn: (api: PlcAPI<S>) => void): PlcAPI<S>;
 
     // --- Gestión de UI (Slots & Rendering) ---
 
     register(slot: string, node: () => React.ReactNode): void;
-    register<K extends string>(slot: string, node: (data: any) => React.ReactNode, dependencyKey: K): void;
+    register<K extends string>(slot: string, node: (data: keyof S) => React.ReactNode, dependencyKey: K): void;
 
     /** Envuelve un slot existente (Decorador/Wrapper) */
     wrap(slot: string, fn: (next: () => React.ReactNode) => () => React.ReactNode): void;
