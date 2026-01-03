@@ -79,7 +79,7 @@ export declare class PlcAPI<S extends ObjectType> {
     
     derive<K extends string>(outputKey: K, dependencies: string[], calculator: () => any): void
 
-    update<K extends keyof S>(key: string & "root", updater: (draft: any) => void, slot?: string): void;
+    update(key: string | "root", updater: (draft: any) => void, slot?: string): void;
 
     subscribe(listener: () => void): () => void;
 

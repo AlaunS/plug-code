@@ -64,13 +64,24 @@ export class PlcAPI<S extends ObjectType> {
     }
 
     derive<K extends string>(outputKey: K, dependencies: string[], calculator: () => any) {
+        let isRunning = false;
+
         const runUpdate = () => {
-            const result = calculator();
-            this.replace("root" as any, { [outputKey]: result });
+            if (isRunning) return;
+
+            isRunning = true;
+            try {
+                const result = calculator();
+                this.replace("root" as any, { [outputKey]: result });
+            } finally {
+                isRunning = false;
+            }
         };
 
         dependencies.forEach(dep => {
-            this.store.subscribe(dep as any, () => runUpdate());
+            this.store.subscribe(dep as any, () => {
+                runUpdate();
+            });
         });
 
         runUpdate();
@@ -104,7 +115,7 @@ export class PlcAPI<S extends ObjectType> {
         }
     }
 
-    scope<T = any>(key: string & "root"): {
+    scope<T = any>(key: string | "root"): {
         get: () => T;
         update: (updater: (draft: T) => void) => void;
         connect: (renderer: (data: T) => React.ReactNode) => React.FC;
@@ -116,7 +127,7 @@ export class PlcAPI<S extends ObjectType> {
             get: (): T => this.getData(key),
 
             update: (updater: (draft: T) => void) => {
-                this.update(key, updater);
+                this.update(key as any, updater);
             },
 
             connect: (renderer: (data: T) => React.ReactNode) => {
