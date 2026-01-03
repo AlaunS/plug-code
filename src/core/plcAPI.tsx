@@ -63,6 +63,19 @@ export class PlcAPI<S extends ObjectType> {
         }
     }
 
+    derive<K extends string>(outputKey: K, dependencies: string[], calculator: () => any) {
+        const runUpdate = () => {
+            const result = calculator();
+            this.replace("root" as any, { [outputKey]: result });
+        };
+
+        dependencies.forEach(dep => {
+            this.store.subscribe(dep as any, () => runUpdate());
+        });
+
+        runUpdate();
+    }
+
     register(slot: SlotKey, node: () => React.ReactNode): void;
     register<K extends string>(slot: SlotKey, node: (data: any) => React.ReactNode, dependencyKey: K): void;
     register(slot: SlotKey, node: (data?: any) => React.ReactNode, dependencyKey?: string) {
