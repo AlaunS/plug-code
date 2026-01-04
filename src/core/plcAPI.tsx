@@ -35,20 +35,33 @@ export class PlcAPI<S extends ObjectType> {
         this.pipeline = new PlcPipeline(store)
     }
 
-    createFeature(name: string, setupFn: (api: PlcAPI<S>) => void): PlcAPI<S> {
-        if (this.installedFeatures.has(name)) {
-            console.warn(`[PlcFramework] Feature '${name}' is already registered. It will be skipped to avoid conflicts.`);
-            return this;
-        }
+    watch<T>(
+        storeKey: string,
+        selector: (data: any) => T,
+        callback: (newValue: T, oldValue: T) => void
+    ): () => void {
+        let previousValue = selector(this.getData(storeKey));
+        const unsubscribe = this.store.subscribe(storeKey as any, () => {
+            const currentData = this.getData(storeKey);
+            const newValue = selector(currentData);
 
-        try {
-            setupFn(this);
-            this.installedFeatures.add(name);
-        } catch (error) {
-            console.error(`[PlcFramework] 💥 Critical error initializing feature '${name}':`, error);
-        }
+            if (newValue !== previousValue) {
+                const old = previousValue;
+                previousValue = newValue;
+                callback(newValue, old);
+            }
+        });
 
-        return this;
+        return unsubscribe;
+    }
+
+    override<K extends string>(key: K & "root", data: any, slot?: string) {
+        this.substores.set(key, data);
+        this.store.set(key as any, data);
+
+        if (slot) {
+            this.invalidate(slot);
+        }
     }
 
     replace<K extends string>(key: K & "root", data: Partial<any>, slot?: string) {
@@ -71,7 +84,19 @@ export class PlcAPI<S extends ObjectType> {
         let lastValue: any
         let isComputing = false
 
-        const runUpdate = () => {
+        let scheduled = false
+
+        const scheduleUpdate = () => {
+            if (scheduled) return
+            scheduled = true
+
+            queueMicrotask(() => {
+                scheduled = false
+                runCompute()
+            })
+        }
+
+        const runCompute = () => {
             if (isComputing) return
 
             isComputing = true
@@ -84,20 +109,18 @@ export class PlcAPI<S extends ObjectType> {
             }
         }
 
-        runUpdate()
+
+        runCompute()
 
         dependencies.forEach(dep => {
             this.store.subscribe(dep as any, () => {
                 if (isComputing) return
-                runUpdate()
+                scheduleUpdate()
             })
         })
 
         return () => lastValue
     }
-
-
-
 
     register(slot: SlotKey, node: () => React.ReactNode): void;
     register<K extends string>(slot: SlotKey, node: (data: any) => React.ReactNode, dependencyKey: K): void;
@@ -294,7 +317,7 @@ export class PlcAPI<S extends ObjectType> {
         this.substores.set(key, initialState)
     }
 
-    update<K extends keyof S>(key: string & "root", updater: (draft: any) => void, slot?: string) {
+    update<K extends keyof S>(key: string & "root", updater: (draft: any) => void, slot?: string, triggerKey?: string) {
         const sub = this.substores.get(key)
         if (!sub) return
 
@@ -304,6 +327,17 @@ export class PlcAPI<S extends ObjectType> {
         this.store.set(key as K, newSub as S[K])
         if (slot) {
             this.invalidate(slot)
+        }
+
+        if (triggerKey && triggerKey !== key) {
+
+            const triggerData = this.substores.get(triggerKey);
+
+            if (triggerData) {
+                const newTriggerRef = { ...triggerData };
+                this.substores.set(triggerKey, newTriggerRef);
+                this.store.set(triggerKey as any, newTriggerRef);
+            }
         }
     }
 }

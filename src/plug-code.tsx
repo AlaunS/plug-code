@@ -39,7 +39,7 @@ export function createPlugAndCode<S extends ObjectType>(
         }, []);
 
         useEffect(() => {
-            api.replace("root", initialProps)
+            api.override("root", initialProps)
         }, [initialProps, api]);
 
         const useSelector = <Result,>(selector: (state: any) => Result): Result => {

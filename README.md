@@ -1,14 +1,12 @@
-# Plug&Code
+# Plug&Code 🔌
 
-Plug&Code is a multipurpose framework for React designed for **scalability, reusability, and modular organization**. It allows you to build complex applications by "plugging in" features without tightly coupling your codebase.
+**Plug&Code** is a multipurpose React framework designed for **scalability, reusability, and modular organization**. It empowers developers to build complex applications by "plugging in" independent feature modules without tightly coupling the codebase.
 
-## Usage
-
-You are welcome to use Plug&Code in your projects, **personal or commercial**, as long as you **do not modify or redistribute the framework** without explicit permission from the author.
+> **License:** You are welcome to use Plug&Code in your personal or commercial projects. Modification or redistribution of the framework source code is prohibited without explicit permission.
 
 ---
 
-### Installation
+## 📦 Installation
 
 Install the framework via npm or yarn:
 
@@ -16,101 +14,158 @@ Install the framework via npm or yarn:
 npm install plug-code
 # or
 yarn add plug-code
+🧠 Core Concepts
+Plug&Code is built around the PLC (Pipeline-Logic-Command) pattern combined with a specialized Reactive State Machine:
 
-```
+Features: Independent functions that encapsulate Logic, UI, and Data. No more monolithic configurations.
 
-### Core Concepts
+Stores (State): Isolated state containers (substores) that can be linked reactively.
 
-Plug&Code is built around the **PLC (Pipeline-Logic-Command)** pattern:
+Slots (UI Pipeline): Inject components into pre-defined locations from any feature.
 
-* **Slots (UI Pipeline):** Inject components into pre-defined locations from any feature.
-* **Commands (Logic):** Execute and wrap business actions (e.g., `checkout`, `print`, `save`).
-* **Transforms (Data):** Pass data through named channels to be modified by different features.
+Commands (Logic): Execute and wrap business actions (e.g., checkout, print) with middleware support.
 
----
+Transforms (Data): Pass data through named channels to be modified by different features before rendering.
 
-### Quick Start Guide
+🚀 Quick Start Guide
+1. Create a Feature Module
+Define features in separate files. A feature is simply a function that receives the api.
 
-#### 1. Initialize your System
+TypeScript
 
-Define your system and register features using the fluent API.
+// features/PaginationFeature.ts
+import type { PlcAPI } from 'plug-code';
 
-```tsx
+export const PaginationFeature = (api: PlcAPI<any>) => {
+    // 1. Initialize State
+    api.createData("pagination", { currentPage: 1, pageSize: 10, total: 0 });
+
+    // 2. Reactive Linking (Derive)
+    // Automatically update 'root.activePage' when 'pagination' changes
+    api.derive("activePage", ["pagination"], () => api.getData("pagination"));
+
+    // 3. Register UI Component
+    // The 3rd argument ("pagination") subscribes this component to the store.
+    api.register("table-footer", (pageData) => {
+        const { currentPage } = pageData;
+        
+        // Use the extended update to modify data
+        const goNext = () => api.update(
+            "pagination",            // Store to update
+            d => { d.currentPage++ } // Updater (Immer draft)
+        );
+
+        return <button onClick={goNext}>Page {currentPage}</button>;
+    }, "pagination");
+};
+2. Initialize your System
+Import your feature functions and inject them into the system.
+
+TypeScript
+
+// system.ts
 import { createPlugAndCode } from 'plug-code';
+import { PaginationFeature } from './features/PaginationFeature';
+import { SalesFeature } from './features/SalesFeature';
 
 export const { useSystemPlc, SystemPlcRoot } = createPlugAndCode((api) => {
-  
-  // Define a Sales Feature
-  api.createFuture("sales", (api) => {
-    // Register a UI component into a slot
-    api.register("header.cart", () => <CartIcon />);
+    // Initialize global root data
+    api.createData("root", { appName: "My Dashboard", theme: "dark" });
 
-    // Register a business command
-    api.registerCommand("sales.checkout", async (items) => {
-      console.log("Saving items to database...", items);
-      return { success: true };
-    });
-  });
-
-  // Define a Logger Feature that wraps existing logic
-  api.createFuture("logger", (api) => {
-    api.wrapCommand("sales.checkout", (next) => async (items) => {
-      console.log("Checkout started...");
-      const result = await next(items);
-      console.log("Checkout finished:", result);
-      return result;
-    });
-  });
+    // Install Features
+    PaginationFeature(api);
+    SalesFeature(api);
 });
+3. Wrap your Application
+Use the hooks to provide context and render slots.
 
-```
+TypeScript
 
-#### 2. Wrap your Application
+// App.tsx
+import { useSystemPlc, SystemPlcRoot } from './system';
 
-Use the `useSystemPlc` hook to manage the state and `SystemPlcRoot` to provide the context.
-
-```tsx
 function App() {
-  // Initialize state with initial properties
-  const { api, useSelector } = useSystemPlc({ shopName: "My Store" });
+  // Initialize system with props (synced to "root" store automatically)
+  const { api, useSelector } = useSystemPlc({ mode: "production" });
 
   return (
     <SystemPlcRoot api={api}>
-      <nav>
-        {/* Render slots from any feature */}
-        {api.render("header.cart")}
-      </nav>
       <main>
-        <h1>Welcome to {useSelector(s => s.root.shopName)}</h1>
+        <h1>Welcome to {useSelector(s => s.root.appName)}</h1>
+        
+        {/* Render slots: The pipeline assembles all registered components */}
+        <div className="footer-area">
+            {api.render("table-footer")}
+        </div>
       </main>
     </SystemPlcRoot>
   );
 }
+📚 API Reference
+State Management & Reactivity
+The framework uses an isolated store architecture with reactive capabilities using Immer.
 
-```
+api.createData(key, initialData)
+Initializes a new substore.
 
----
+key: Unique identifier (e.g., "pagination").
 
-### API Reference
+initialData: The starting object.
 
-#### **UI Management (Slots)**
+api.getData(key)
+Imperatively retrieves the current snapshot of a store.
 
-* `api.register(slotName, component)`: Adds a UI component to a slot.
-* `api.render(slotName)`: Renders all components registered in that slot.
-* `api.wrap(slot, wrapper)`: Wraps a slot's content with higher-order components.
+api.update(key, updater, [slot], [triggerKey])
+Updates the state using Immer-powered drafts.
 
-#### **Business Logic (Commands)**
+key: The store to update.
 
-* `api.registerCommand(id, fn)`: Registers an executable action.
-* `api.execute(id, payload)`: Runs a command and returns a Promise.
-* `api.wrapCommand(id, (next) => ...)`: Intercepts a command to add side-effects or validations.
+updater: (draft) => void. Mutate the draft directly.
 
-#### **Data Processing (Transforms)**
+slot (Optional): Name of the UI slot to invalidate (clears visual cache).
 
-* `api.send(channel, id, fn, priority)`: Adds a data transformer to a specific channel.
-* `api.receive(channel, initialData)`: Pipes data through all transformers in the channel.
+triggerKey (Optional): Name of another store to force-update (useful for manual dependency triggering without derive).
 
-#### **State Management**
+api.derive(targetKey, dependencies, calculator)
+Creates a reactive link. When dependencies change, the target is recalculated automatically.
 
-* `useSelector(selector)`: Reactively listen to state changes.
-* `api.update(key, updater)`: Update store data using Immer-powered drafts.
+targetKey: Where to save the result.
+
+dependencies: Array of store keys to listen to.
+
+api.watch(key, selector, callback)
+Listens for changes to perform side effects (logging, analytics, etc.).
+
+UI Management (Slots)
+api.register(slotName, componentFn, [dependencyKey])
+Adds a component to a pipeline.
+
+slotName: Where to inject the component.
+
+componentFn: Function receiving data and returning JSX.
+
+dependencyKey: The store key this component subscribes to. It triggers a re-render only when that specific store changes.
+
+api.render(slotName, [props])
+Renders the pipeline for the given slot name.
+
+Business Logic (Commands)
+api.registerCommand(id, fn): Registers an executable action.
+
+api.execute(id, payload): Runs a command and returns a Promise.
+
+api.wrapCommand(id, middlewareFn): Intercepts a command to add logic before/after execution.
+
+Data Processing (Transforms)
+api.send(channel, id, fn, priority): Adds a transformation step to a data pipeline.
+
+api.receive(channel, initialData): Pipes data through all transformers in the channel.
+
+🌟 Best Practices
+Independent Files: Keep each feature in its own file (e.g., AuthFeature.ts, TableFeature.ts).
+
+Use Derive: Prefer api.derive over manual updates to sync data between stores.
+
+Scope Dependencies: Always pass the dependencyKey (3rd arg) in api.register to ensure optimal performance.
+
+Avoid "Root" Spam: Create specific stores ("filters", "auth", "cart") instead of putting everything in "root". This prevents unnecessary re-renders.

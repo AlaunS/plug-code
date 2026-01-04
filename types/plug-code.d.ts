@@ -52,8 +52,8 @@ export declare class PlcAPI<S extends ObjectType> {
      * @param name Identificador único para debugging y prevención de duplicados.
      * @param setupFn Función de configuración donde registras slots, comandos, etc.
      */
-    createFeature(name: string, setupFn: (api: PlcAPI<S>) => void): PlcAPI<S>;
-
+    watch<T>(storeKey: string, selector: (data: any) => T, callback: (newValue: T, oldValue: T) => void): () => void
+    override<K extends string>(key: K & "root", data: any, slot?: string): void
     // --- Gestión de UI (Slots & Rendering) ---
 
     register(slot: string, node: () => React.ReactNode): void;
@@ -79,7 +79,7 @@ export declare class PlcAPI<S extends ObjectType> {
     
     derive<K extends string>(outputKey: K, dependencies: string[], calculator: () => any): void
 
-    update(key: string | "root", updater: (draft: any) => void, slot?: string): void;
+    update(key: string | "root", updater: (draft: any) => void, slot?: string, triggerKey?: string): void;
 
     subscribe(listener: () => void): () => void;
 
