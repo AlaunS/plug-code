@@ -7,6 +7,8 @@ import * as React from 'react';
 export declare type ObjectType = Record<string, any>;
 
 export type Slot = () => React.ReactNode;
+interface SlotRegistry {}
+type SlotKey = keyof SlotRegistry | (string & {});
 
 /**
  * Función para ejecutar lógica de negocio (Acciones).
@@ -56,8 +58,8 @@ export declare class PlcAPI<S extends ObjectType> {
     override<K extends string>(key: K & "root", data: any, slot?: string): void
     // --- Gestión de UI (Slots & Rendering) ---
 
-    register(slot: string, node: () => React.ReactNode): void;
-    register<K extends string>(slot: string, node: (data: any) => React.ReactNode, dependencyKey: K): void;
+    register(slot: string, node: (props?: any) => React.ReactNode): void;
+    register<K extends string>(slot: string, node: (data: any, props?: any) => React.ReactNode, dependencyKey: K): void;
 
     /** Envuelve un slot existente (Decorador/Wrapper) */
     wrap(slot: string, fn: (next: () => React.ReactNode) => () => React.ReactNode): void;
@@ -88,15 +90,18 @@ export declare class PlcAPI<S extends ObjectType> {
      */
     scope<T = any>(key: string): {
         get: () => T;
-        update: (updater: (draft: T) => void) => void;
-        connect: (renderer: (data: T) => React.ReactNode) => React.FC;
-        render: (slotName: string) => React.ReactNode | null;
+        update: (updater: (draft: T) => void, slot?: string, triggerKey?: string) => void;
+        connect: <P = {}, R = any>(
+            selector: (data: T, props: P) => R
+        ) => (WrappedComponent: React.ComponentType<P & R>) => React.FC<P>;
+
+        render: (slotName: SlotKey) => React.FC;
         receive: (context?: any) => any;
         root: PlcAPI<S>;
     };
 
     /** Conecta un componente a una parte del estado (HOC) */
-    connect<T = any>(key: string, renderer: (data: T) => React.ReactNode): React.FC;
+    connect<State = any, OwnProps = {}, ResultProps = {}>(key: string, selector: (state: State, props: OwnProps) => ResultProps): (WrappedComponent: React.ComponentType<OwnProps & ResultProps>) => React.FC<OwnProps>;
 
     // --- Pipeline de Datos (Transforms) ---
 

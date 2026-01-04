@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useContext } from "react";
 import { ScopeContext } from "../contexts/pipeline";
 import type { ObjectType } from "../types/general";
 import type { ScheduledSlot, Slot } from "../types/pipeline";
@@ -73,9 +73,15 @@ export class PlcPipeline<S extends ObjectType> {
     }
 
     private regenerateCache(slot: string) {
-        const nodes = this.slots.get(slot)?.map((fn, i) => (
-            <React.Fragment key={i}>{fn()}</React.Fragment>
-        )) || [];
+        const nodes = this.slots.get(slot)?.map((fn, i) => {
+            const SlotBridge = () => {
+                const dynamicProps = useContext(ScopeContext);
+                return <React.Fragment>{fn(dynamicProps)}</React.Fragment>;
+            };
+
+            return <SlotBridge key={i} />;
+        }) || [];
+
         this.cache.set(slot, nodes);
     }
 }

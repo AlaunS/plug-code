@@ -1,6 +1,6 @@
 import { produce } from "immer";
 import type { ObjectType } from "../types/general";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { PlcPipeline } from "./plcPipeline";
 import type { PlcStore } from "./plcStore";
 import type { CommandFn, transformerType } from "../types/api";
@@ -28,7 +28,6 @@ export class PlcAPI<S extends ObjectType> {
 
     private transformers = new Map<string, transformerType[]>()
     private commands = new Map<string, CommandFn>();
-    private installedFeatures = new Set<string>();
 
     constructor(store: PlcStore<S>) {
         this.store = store
@@ -122,57 +121,67 @@ export class PlcAPI<S extends ObjectType> {
         return () => lastValue
     }
 
-    register(slot: SlotKey, node: () => React.ReactNode): void;
-    register<K extends string>(slot: SlotKey, node: (data: any) => React.ReactNode, dependencyKey: K): void;
-    register(slot: SlotKey, node: (data?: any) => React.ReactNode, dependencyKey?: string) {
+    register(slot: SlotKey, node: (props?: any) => React.ReactNode): void;
+    register<K extends string>(slot: SlotKey, node: (data: any, props?: any) => React.ReactNode, dependencyKey: K): void;
+    register(slot: SlotKey, node: (data?: any, props?: any) => React.ReactNode, dependencyKey?: string) {
         if (dependencyKey) {
-            const ConnectedWrapper = () => {
-                const [data, setData] = useState(() => this.substores.get(dependencyKey));
+            const ConnectedWrapper = (props: any) => {
+                const [storeData, setStoreData] = useState(() => this.substores.get(dependencyKey));
 
                 useEffect(() => {
                     const unsubscribe = this.store.subscribe(dependencyKey as any, () => {
-                        setData(this.substores.get(dependencyKey));
+                        setStoreData(this.substores.get(dependencyKey));
                     });
                     return unsubscribe;
                 }, []);
 
-                return node(data);
+                return <>{node(storeData, props)}</>;
             };
 
             this.store.batch(() => {
-                this.pipeline.register(slot as string, () => <ConnectedWrapper />);
+                this.pipeline.register(slot as string, ConnectedWrapper);
             });
         }
         else {
             this.store.batch(() => {
-                this.pipeline.register(slot as string, node as () => React.ReactNode);
+                this.pipeline.register(slot as string, node);
             });
         }
     }
 
     scope<T = any>(key: string | "root"): {
         get: () => T;
-        update: (updater: (draft: T) => void) => void;
-        connect: (renderer: (data: T) => React.ReactNode) => React.FC;
-        render: (slotName: SlotKey) => React.ReactNode | null;
+        update: (updater: (draft: T) => void, slot?: string, triggerKey?: string) => void;
+        connect: <P = {}, R = any>(
+            selector: (data: T, props: P) => R
+        ) => (WrappedComponent: React.ComponentType<P & R>) => React.FC<P>;
+
+        render: (slotName: SlotKey) => React.FC;
         receive: (context?: any) => any;
         root: PlcAPI<S>;
     } {
         return {
             get: (): T => this.getData(key),
 
-            update: (updater: (draft: T) => void) => {
-                this.update(key as any, updater);
+            update: (updater: (draft: T) => void, slot?: string, triggerKey?: string) => {
+                this.update(key as any, updater, slot, triggerKey);
             },
 
-            connect: (renderer: (data: T) => React.ReactNode) => {
-                return this.connect(key, renderer);
+            connect: <P = {}, R = any>(
+                selector: (data: T, props: P) => R
+            ) => {
+                return this.connect(key, selector);
             },
 
             render: (slotName: SlotKey) => {
-                return this.connect(key, (localData) => {
-                    return this.pipeline.render(slotName as string, localData) as React.ReactNode;
-                }) as any;
+                const ScopedSlotRenderer = ({ _scopeData }: { _scopeData: T }) => {
+                    return <>{this.pipeline.render(slotName as string, _scopeData)}</>;
+                };
+
+                return this.connect(
+                    key,
+                    (data: T) => ({ _scopeData: data })
+                )(ScopedSlotRenderer) as any;
             },
 
             receive: (context: any = {}) => {
@@ -184,25 +193,53 @@ export class PlcAPI<S extends ObjectType> {
         };
     }
 
-    connect<T = any>(key: string, renderer: (data: T) => React.ReactNode): React.FC {
-        return () => {
-            const [data, setData] = useState<T>(() => this.substores.get(key));
+    connect<State = any, OwnProps = {}, ResultProps = {}>(
+        key: string,
+        selector: (state: State, props: OwnProps) => ResultProps
+    ): (WrappedComponent: React.ComponentType<OwnProps & ResultProps>) => React.FC<OwnProps> {
+        return (WrappedComponent: React.ComponentType<OwnProps & ResultProps>) => {
 
-            useEffect(() => {
-                const unsubscribe = this.store.subscribe(key as any, () => {
-                    setData(this.substores.get(key));
+            const ConnectedComponent = (props: OwnProps) => {
+                const propsRef = useRef(props);
+                propsRef.current = props;
+
+                const [slice, setSlice] = useState<ResultProps>(() => {
+                    const data = this.substores.get(key);
+                    return selector(data, props);
                 });
 
-                return () => {
-                    unsubscribe();
-                };
-            }, []);
+                useEffect(() => {
+                    const unsubscribe = this.store.subscribe(key as any, () => {
+                        const currentData = this.substores.get(key);
+                        const newSlice = selector(currentData, propsRef.current);
 
-            if (data === undefined) return null;
-            return <>{renderer(data)}</>;
+                        setSlice(prev => {
+                            if (prev === newSlice) return prev;
+
+                            if (typeof prev === 'object' && prev !== null && typeof newSlice === 'object' && newSlice !== null) {
+                                const keysA = Object.keys(prev) as Array<keyof ResultProps>;
+                                const keysB = Object.keys(newSlice) as Array<keyof ResultProps>;
+                                if (keysA.length === keysB.length && keysA.every(k => prev[k] === newSlice[k])) {
+                                    return prev;
+                                }
+                            }
+
+                            return newSlice;
+                        });
+                    });
+                    return unsubscribe;
+                }, []);
+
+                if (slice === undefined && this.substores.get(key) === undefined) return null;
+                return <WrappedComponent {...props} {...slice} />;
+            };
+
+            const displayName = WrappedComponent.displayName || WrappedComponent.name || 'Component';
+            ConnectedComponent.displayName = `Connect(${displayName})`;
+
+            return ConnectedComponent;
         };
     }
-
     wrap(slot: SlotKey, fn: (next: () => React.ReactNode) => () => React.ReactNode) {
         this.store.batch(() => {
             this.pipeline.wrap(slot as string, fn)
@@ -215,8 +252,8 @@ export class PlcAPI<S extends ObjectType> {
         })
     }
 
-    render(slot: SlotKey) {
-        return this.pipeline.render(slot as string)
+    render(slot: SlotKey, props?: any) {
+        return this.pipeline.render(slot as string, props)
     }
 
     invalidate(slot?: SlotKey) {
