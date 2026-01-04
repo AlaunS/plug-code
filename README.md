@@ -4,8 +4,8 @@
 It empowers developers to build complex applications by **plugging in independent feature modules** without tightly coupling the codebase.
 
 > **License**
-> You may use Plug&Code in personal or commercial projects.
-> **Modification or redistribution of the framework source code is prohibited** without explicit permission.
+> This project is licensed under the Plug&Code License.
+> See the LICENSE file for details.
 
 ---
 
@@ -67,8 +67,7 @@ import { PaginationFeature } from './features/PaginationFeature';
 import { SalesFeature } from './features/SalesFeature';
 
 export const { useSystemPlc, SystemPlcRoot } = createPlugAndCode((api) => {
-  api.createData("root", { appName: "My Dashboard", theme: "dark" });
-
+  // It creates root automatically | root = {}
   PaginationFeature(api);
   SalesFeature(api);
 });
