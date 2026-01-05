@@ -57,7 +57,8 @@ export declare class PlcAPI<S extends ObjectType> {
     watch<T>(storeKey: string, selector: (data: any) => T, callback: (newValue: T, oldValue: T) => void): () => void
     override<K extends string>(key: K & "root", data: any, slot?: string): void
     // --- Gestión de UI (Slots & Rendering) ---
-
+    
+    redraw(key: string): void
     register(slot: string, node: (props?: any) => React.ReactNode): void;
     register<K extends string>(slot: string, node: (data: any, props?: any) => React.ReactNode, dependencyKey: K): void;
 

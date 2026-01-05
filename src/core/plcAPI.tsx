@@ -6,6 +6,7 @@ import type { PlcStore } from "./plcStore";
 import type { CommandFn, transformerType } from "../types/api";
 
 import type { ChannelRegistry, CommandRegistry, SlotRegistry } from "../types/registry";
+import { isEqual } from "../helpers/core";
 
 type ChannelKey = keyof ChannelRegistry | (string & {});
 type ChannelData<K> = K extends keyof ChannelRegistry ? ChannelRegistry[K] : any;
@@ -20,7 +21,6 @@ type CommandResult<K> = K extends keyof CommandRegistry
 
 type SlotKey = keyof SlotRegistry | (string & {});
 
-
 export class PlcAPI<S extends ObjectType> {
     private store: PlcStore<S>
     private pipeline: PlcPipeline<S>
@@ -32,6 +32,18 @@ export class PlcAPI<S extends ObjectType> {
     constructor(store: PlcStore<S>) {
         this.store = store
         this.pipeline = new PlcPipeline(store)
+    }
+
+    redraw(key: string): void {
+        const currentData = this.substores.get(key);
+        if (currentData === undefined) return;
+
+        const dataRef = typeof currentData === 'object' && currentData !== null
+            ? (Array.isArray(currentData) ? [...currentData] : { ...currentData })
+            : currentData;
+
+        this.substores.set(key, dataRef);
+        this.store.set(key as any, dataRef);
     }
 
     watch<T>(
@@ -123,7 +135,7 @@ export class PlcAPI<S extends ObjectType> {
 
     register(slot: SlotKey, node: (props?: any) => React.ReactNode): void;
     register<K extends string>(slot: SlotKey, node: (data: any, props?: any) => React.ReactNode, dependencyKey: K): void;
-    register(slot: SlotKey, node: (data?: any, props?: any) => React.ReactNode, dependencyKey?: string) {
+    register(slot: SlotKey, node: (arg1?: any, arg2?: any) => React.ReactNode, dependencyKey?: string) {
         if (dependencyKey) {
             const ConnectedWrapper = (props: any) => {
                 const [storeData, setStoreData] = useState(() => this.substores.get(dependencyKey));
@@ -139,7 +151,7 @@ export class PlcAPI<S extends ObjectType> {
             };
 
             this.store.batch(() => {
-                this.pipeline.register(slot as string, ConnectedWrapper);
+                this.pipeline.register(slot as string, (p: any) => <ConnectedWrapper {...p} />);
             });
         }
         else {
@@ -199,7 +211,7 @@ export class PlcAPI<S extends ObjectType> {
     ): (WrappedComponent: React.ComponentType<OwnProps & ResultProps>) => React.FC<OwnProps> {
         return (WrappedComponent: React.ComponentType<OwnProps & ResultProps>) => {
 
-            const ConnectedComponent = (props: OwnProps) => {
+            const ConnectedComponent: React.FC<OwnProps> = (props) => {
                 const propsRef = useRef(props);
                 propsRef.current = props;
 
@@ -212,25 +224,26 @@ export class PlcAPI<S extends ObjectType> {
                     const unsubscribe = this.store.subscribe(key as any, () => {
                         const currentData = this.substores.get(key);
                         const newSlice = selector(currentData, propsRef.current);
-
                         setSlice(prev => {
-                            if (prev === newSlice) return prev;
-
-                            if (typeof prev === 'object' && prev !== null && typeof newSlice === 'object' && newSlice !== null) {
-                                const keysA = Object.keys(prev) as Array<keyof ResultProps>;
-                                const keysB = Object.keys(newSlice) as Array<keyof ResultProps>;
-                                if (keysA.length === keysB.length && keysA.every(k => prev[k] === newSlice[k])) {
-                                    return prev;
-                                }
-                            }
-
+                            if (isEqual(prev, newSlice)) return prev;
                             return newSlice;
                         });
                     });
                     return unsubscribe;
                 }, []);
 
+                useEffect(() => {
+                    const currentData = this.substores.get(key);
+                    const newSlice = selector(currentData, props);
+
+                    setSlice(prev => {
+                        if (isEqual(prev, newSlice)) return prev;
+                        return newSlice;
+                    });
+                }, [props]);
+
                 if (slice === undefined && this.substores.get(key) === undefined) return null;
+
                 return <WrappedComponent {...props} {...slice} />;
             };
 
@@ -240,6 +253,7 @@ export class PlcAPI<S extends ObjectType> {
             return ConnectedComponent;
         };
     }
+
     wrap(slot: SlotKey, fn: (next: () => React.ReactNode) => () => React.ReactNode) {
         this.store.batch(() => {
             this.pipeline.wrap(slot as string, fn)
@@ -367,7 +381,6 @@ export class PlcAPI<S extends ObjectType> {
         }
 
         if (triggerKey && triggerKey !== key) {
-
             const triggerData = this.substores.get(triggerKey);
 
             if (triggerData) {
