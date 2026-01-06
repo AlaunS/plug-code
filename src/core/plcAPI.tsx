@@ -254,9 +254,12 @@ export class PlcAPI<S extends ObjectType> {
         };
     }
 
-    wrap(slot: SlotKey, fn: (next: () => React.ReactNode) => () => React.ReactNode) {
+    wrap(
+        slot: SlotKey, 
+        fn: (next: (props?: any) => React.ReactNode) => (props?: any) => React.ReactNode
+    ) {
         this.store.batch(() => {
-            this.pipeline.wrap(slot as string, fn)
+            this.pipeline.wrap(slot as string, fn as any)
         })
     }
 

@@ -63,7 +63,7 @@ export declare class PlcAPI<S extends ObjectType> {
     register<K extends string>(slot: string, node: (data: any, props?: any) => React.ReactNode, dependencyKey: K): void;
 
     /** Envuelve un slot existente (Decorador/Wrapper) */
-    wrap(slot: string, fn: (next: () => React.ReactNode) => () => React.ReactNode): void;
+    wrap(slot: string, fn: (next: (props?: any) => React.ReactNode) => (props?: any) => React.ReactNode): void;
 
     /** Agrega contenido después de un slot existente */
     after(slot: string, node: () => React.ReactNode): void;
