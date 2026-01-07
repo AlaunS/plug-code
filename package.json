@@ -1,6 +1,6 @@
 {
   "name": "plug-code",
-  "version": "2.0.4",
+  "version": "2.1.0",
   "description": "A reactive state management and UI framework for React",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
