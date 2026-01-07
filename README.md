@@ -1,151 +1,181 @@
-# 🔌 Plug&Code
+# 🔌 Plug&Code (v2)
 
-**Plug&Code** is a multipurpose React framework designed for **scalability, reusability, and modular organization**.
-It empowers developers to build complex applications by **plugging in independent feature modules** without tightly coupling the codebase.
+**Plug&Code** is a high-performance, strongly-typed, modular React framework. It’s designed to build complex enterprise applications (like Dashboards, CRMs, ERPs) by decoupling logic, UI, and data through a Feature-based architecture.
 
-> **License**
-> This project is licensed under the Plug&Code License.
-> See the LICENSE file for details.
+**What's New in v2:** Full TypeScript support (Generics & Registry Pattern), native Virtualization, immutable state management with Immer, and lazy-loaded modules.
+
+---
+
+## 🚀 Key Features
+
+- 🛡️ **Strong Typing:** Autocomplete and type inference in Stores, Commands, and Slots thanks to the Registry pattern.
+
+- 🧩 **Feature-First Architecture:** Organize your code in portable `ModuleManifests` that encapsulate state, logic, and UI.
+
+- ⚡ **Native Performance:** Built-in virtual rendering (`markVirtual`) and priority management with the Scheduler.
+
+- 🧠 **Reactive State Machine:** Global and module-level state managed with Immer and granular subscriptions.
+
+- 🎨 **UI Composition Pipeline:** Slot system with support for multiple injections, priorities, and `keepAlive`.
 
 ---
 
 ## 📦 Installation
 
 ```bash
-npm install plug-code
+npm install plug-code immer
 # or
-yarn add plug-code
-```
+yarn add plug-code immer
+🛡️ The Type Contract (Registry)
+Unlike other frameworks, Plug&Code requires defining the “shape” of your app in a central file. This enables IntelliSense across the entire application.
 
----
+Create a file types/registry.ts:
 
-## 🧠 Core Concepts
+ts
+Copiar código
+// types/registry.ts
+export type User = { id: string; name: string };
 
-Plug&Code is built around the **PLC (Pipeline–Logic–Command)** pattern combined with a specialized **Reactive State Machine**.
+// 1. Define your State
+export interface RootStoreRegistry {
+  "users:list": User[];
+  "app:loading": boolean;
+}
 
-| Concept                 | Description                                              |
-| ----------------------- | -------------------------------------------------------- |
-| **Features**            | Independent modules that encapsulate logic, UI, and data |
-| **Stores (State)**      | Isolated substores with reactive linking                 |
-| **Slots (UI Pipeline)** | Injection points for UI from any feature                 |
-| **Commands (Logic)**    | Executable business actions with middleware              |
-| **Transforms (Data)**   | Data pipelines modified by multiple features             |
+// 2. Define your Commands (Payload -> Result)
+export interface CommandRegistry {
+  "users:add": { payload: User; result: void };
+  "users:delete": { payload: { id: string }; result: boolean };
+}
 
----
+// 3. Define your UI Slots
+export interface SlotRegistry {
+  "main-layout": {};
+  "sidebar": { collapsed: boolean };
+}
 
-## 🚀 Quick Start
+// 4. Define Feature State
+export interface FeatureRegistry {
+  "auth": { token: string | null };
+}
+🚀 Quick Start
+1️⃣ Create a Feature Module
+Instead of loose functions, you now use a ModuleManifest object.
 
-### 1️⃣ Create a Feature Module
+ts
+Copiar código
+// features/UsersFeature.tsx
+import { ModuleManifest } from 'plug-code';
+import { useCommand } from '../framework/plcHooks';
 
-```ts
-// features/PaginationFeature.ts
-import type { PlcAPI } from 'plug-code';
-
-export const PaginationFeature = (api: PlcAPI<any>) => {
-  api.createData("pagination", { currentPage: 1, pageSize: 10, total: 0 });
-
-  api.derive("activePage", ["pagination"], () => api.getData("pagination"));
-
-  api.register("table-footer", (pageData) => {
-    const { currentPage } = pageData;
-
-    const goNext = () => api.update("pagination", d => { d.currentPage++ });
-
-    return <button onClick={goNext}>Page {currentPage}</button>;
-  }, "pagination");
-};
-```
-
----
-
-### 2️⃣ Initialize the System
-
-```ts
-// system.ts
-import { createPlugAndCode } from 'plug-code';
-import { PaginationFeature } from './features/PaginationFeature';
-import { SalesFeature } from './features/SalesFeature';
-
-export const { useSystemPlc, SystemPlcRoot } = createPlugAndCode((api) => {
-  // It creates root automatically | root = {}
-  PaginationFeature(api);
-  SalesFeature(api);
-});
-```
-
----
-
-### 3️⃣ Wrap Your Application
-
-```tsx
-// App.tsx
-import { useSystemPlc, SystemPlcRoot } from './system';
-
-function App() {
-  const { api, useSelector } = useSystemPlc({ mode: "production" });
+const UserList = () => {
+  // Fully typed hook thanks to the Registry
+  const users = useStore("users:list", s => s); 
+  const deleteCmd = useCommand("users:delete");
 
   return (
-    <SystemPlcRoot api={api}>
-      <main>
-        <h1>Welcome to {useSelector(s => s.root.appName)}</h1>
-        <div className="footer-area">
-          {api.render("table-footer")}
-        </div>
-      </main>
-    </SystemPlcRoot>
+    <ul>
+      {users.map(u => (
+        <li key={u.id}>
+          {u.name} <button onClick={() => deleteCmd({ id: u.id })}>x</button>
+        </li>
+      ))}
+    </ul>
   );
-}
-```
+};
 
----
+export const UsersFeature: ModuleManifest = {
+  name: "users",
 
-## 📚 API Reference
+  // Initial State
+  state: {
+    "users:list": []
+  },
 
-### 🧬 State & Reactivity
+  // Commands (Logic)
+  commands: {
+    "users:delete": ({ id }) => {
+       console.log("Deleting", id);
+       return true;
+    }
+  },
 
-| Method                                  | Description              |
-| --------------------------------------- | ------------------------ |
-| `createData(key, initial)`              | Create a new store       |
-| `getData(key)`                          | Get snapshot of store    |
-| `update(key, updater, slot?, trigger?)` | Mutate store using Immer |
-| `derive(target, deps, calc)`            | Create reactive linkage  |
-| `watch(key, selector, cb)`              | Listen to store changes  |
+  // UI Injection
+  slots: {
+    "main-layout": [
+      { id: "user-list-view", component: UserList, priority: 10 }
+    ]
+  },
 
----
+  // Advanced Initialization
+  onLoad: (api) => {
+      // Enable virtualization if the list grows
+      api.markVirtual("main-layout", { itemHeight: 50 });
+  }
+};
+2️⃣ Initialize the System
+ts
+Copiar código
+// main.tsx
+import { PlcStore, PlcAPI, PlcProvider } from 'plug-code';
+import { UsersFeature } from './features/UsersFeature';
 
-### 🎨 UI Slots
+// 1. Instantiate Core
+const store = new PlcStore();
+const api = new PlcAPI(store);
 
-| Method                               | Description          |
-| ------------------------------------ | -------------------- |
-| `register(slot, component, depKey?)` | Attach UI to slot    |
-| `render(slot, props?)`               | Render slot pipeline |
+// 2. Register Modules
+api.registerModule(UsersFeature);
 
----
+// 3. Render App
+const App = () => (
+  <PlcProvider api={api}>
+     <div className="app">
+        {/* Render the Main Slot */}
+        {api.render("main-layout")}
+     </div>
+  </PlcProvider>
+);
+📚 API Reference
+🧬 State Management (api)
+createStore<K>(key, initial): Initializes a key in the root store.
 
-### 🧠 Business Logic (Commands)
+setStore<K>(key, updater, priority?, useTransition?): Updates state using Immer. Supports React 18 concurrency.
 
-| Method                        | Description       |
-| ----------------------------- | ----------------- |
-| `registerCommand(id, fn)`     | Register action   |
-| `execute(id, payload)`        | Run command       |
-| `wrapCommand(id, middleware)` | Intercept command |
+getStore<K>(key): Gets a snapshot of the state.
 
----
+watch<K>(key, selector, callback): Listen to reactive changes outside components.
 
-### 🔄 Data Transforms
+🎨 UI & Layout (api.layout)
+register(slot, id, component, priority, keepAlive): Inject a component into a slot.
 
-| Method                            | Description   |
-| --------------------------------- | ------------- |
-| `send(channel, id, fn, priority)` | Add transform |
-| `receive(channel, data)`          | Run pipeline  |
+priority: Higher number = higher placement.
 
----
+keepAlive: Keeps the component in memory (hidden DOM) when changing views.
 
-## 🌟 Best Practices
+render(slot, props): Render a slot's content.
 
-* Keep **one feature per file**
-* Prefer `derive` over manual syncing
-* Always specify `dependencyKey` in `register`
-* Avoid putting everything in `root` — create focused stores
+markVirtual(slot, config): Transform a normal slot into a high-performance virtual list (supports 10k+ items).
 
----
+🧠 Logic & Commands
+registerCommand(id, fn): Register a globally executable function.
+
+execute(id, payload): Execute a command and return a typed Promise.
+
+wrapCommand(id, middleware): Intercept commands (useful for logs, confirmations, etc).
+
+⚛️ React Hooks
+useStore(key, selector): Reactive, selective state subscription.
+
+useCommand(id): Get an executable command function.
+
+useSlot(slot): Get a function to dynamically render a slot.
+
+🌟 Best Practices
+Define your types first: Everything starts in registry.ts. If it’s not there, it doesn’t exist.
+
+Atomic Features: A feature should contain everything it needs (Store, UI, Commands).
+
+Data-Driven UI: Don’t manipulate the UI directly. Change the Store and let Watchers or Hooks update the view.
+
+Use Virtualization: For large or unbounded lists, use api.markVirtual in the feature’s onLoad.

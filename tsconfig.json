@@ -1,15 +1,18 @@
 {
   "compilerOptions": {
-    "target": "ES2019",
+    "target": "ES2022",
     "module": "ESNext",
-    "jsx": "react-jsx",
+    "moduleResolution": "node",
     "declaration": true,
-    "emitDeclarationOnly": true,
-    "outDir": "types",
-    "strict": false,
+    "outDir": "dist",
+    "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "moduleResolution": "Node"
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "react-jsx"
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx"]
+  "include": ["src"],
+  "exclude": ["node_modules", "dist", "tests"]
 }

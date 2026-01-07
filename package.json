@@ -1,37 +1,27 @@
 {
   "name": "plug-code",
-  "version": "1.2.0",
+  "version": "1.0.0",
   "description": "",
-  "main": "src/plug-code.tsx",
-  "types": "types/plug-code.d.ts",
-  "exports": {
-    ".": {
-      "import": "./src/plug-code.tsx",
-      "require": "./src/plug-code.tsx"
-    }
-  },
+  "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "build:types": "tsc -p tsconfig.json"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/AlaunS/plug-code.git"
+    "build": "tsc",
+    "watch": "tsc --watch",
+    "test": "jest"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
-  "bugs": {
-    "url": "https://github.com/AlaunS/plug-code/issues"
+  "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "@types/node": "^25.0.3",
+    "@types/react": "^19.2.7",
+    "jest": "^30.2.0",
+    "ts-jest": "^29.4.6",
+    "typescript": "^5.9.3"
   },
-  "homepage": "https://github.com/AlaunS/plug-code#readme",
   "dependencies": {
     "immer": "^11.1.3",
     "react": "^19.2.3"
-  },
-  "devDependencies": {
-    "@types/react": "^19.2.7",
-    "typescript": "^5.4.2"
   }
 }
