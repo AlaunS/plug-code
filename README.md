@@ -1,100 +1,107 @@
-
 # 🔌 Plug&Code (v2)
 
-[![NPM Version](https://img.shields.io/npm/v/plug-code?color=blue)](https://www.npmjs.com/package/plug-code)
-[![License](https://img.shields.io/npm/l/plug-code?color=green)](LICENSE)
-[![TypeScript](https://img.shields.io/badge/TypeScript-4.9-blue)](https://www.typescriptlang.org/)
-
-**Plug&Code** is a **high-performance**, strongly-typed, **modular React framework**.  
+**Plug&Code** is a **high-performance**, strongly-typed, **modular React framework**.
 It’s designed for complex enterprise apps (Dashboards, CRMs, ERPs), decoupling **logic**, **UI**, and **data** via a **Feature-based architecture**.
 
-> **v2 Highlights:** Full TypeScript support (Generics & Registry Pattern), native virtualization, immutable state management with Immer, and lazy-loaded modules.
+> **v2 Highlights:** Zero-config TypeScript (Schema-based Factory), native virtualization, immutable state management with Immer, and lazy-loaded modules.
 
 ---
 
 ## 🚀 Key Features
 
-- 🛡️ **Strong Typing:** Autocomplete and type inference in **Stores**, **Commands**, and **Slots** via the Registry pattern.
-- 🧩 **Feature-First Architecture:** Organize code in portable `ModuleManifests` that encapsulate **state**, **logic**, and **UI**.
-- ⚡ **Native Performance:** Built-in virtual rendering (`markVirtual`) and priority management via **Scheduler**.
-- 🧠 **Reactive State Machine:** Global & module-level state with **Immer** and granular subscriptions.
-- 🎨 **UI Composition Pipeline:** Slots system with **multiple injections**, **priorities**, and **keepAlive** support.
+* 🛡️ **Schema-Based Typing:** Define your app structure in a simple TS type and get **autocompletion instantly** in hooks and API methods.
+* 🧩 **Feature-First Architecture:** Organize code in portable `ModuleManifests` that encapsulate **state**, **logic**, and **UI**.
+* ⚡ **Native Performance:** Built-in virtual rendering (`markVirtual`) and priority management via **Scheduler**.
+* 🧠 **Reactive State Machine:** Global & module-level state with **Immer** and granular subscriptions.
+* 🎨 **UI Composition Pipeline:** Slots system with **multiple injections**, **priorities**, and **keepAlive** support.
 
 ---
 
 ## 📦 Installation
 
-<details>
-<summary>Click to expand</summary>
-
 ```bash
 npm install plug-code immer
 # or
 yarn add plug-code immer
-````
 
-</details>
+```
 
 ---
 
-## 🛡️ The Type Contract (Registry)
+## 🛡️ The Type Schema
 
-Plug&Code requires defining the **shape of your app** in a central registry file, enabling **IntelliSense** everywhere.
-
-<details>
-<summary>Example: types/registry.ts</summary>
+Forget about complex `declare module` augmentations. In v2, you simply define the shape of your application in a TypeScript object type.
 
 ```ts
-export type User = { id: string; name: string };
+// types/AppSchema.ts
 
-// 1. App State
-export interface RootStoreRegistry {
-  "users:list": User[];
-  "app:loading": boolean;
-}
+export type AppSchema = {
+  // 1. App State
+  store: {
+    "users:list": { id: string; name: string }[];
+    "app:loading": boolean;
+  };
 
-// 2. Commands (Payload -> Result)
-export interface CommandRegistry {
-  "users:add": { payload: User; result: void };
-  "users:delete": { payload: { id: string }; result: boolean };
-}
+  // 2. Commands (Payload -> Result)
+  commands: {
+    "users:delete": { payload: { id: string }; result: boolean };
+    "data:fetch": { payload: void; result: void };
+  };
 
-// 3. UI Slots
-export interface SlotRegistry {
-  "main-layout": {};
-  "sidebar": { collapsed: boolean };
-}
+  // 3. UI Slots (Props)
+  slots: {
+    "main-layout": {};
+    "sidebar": { collapsed: boolean };
+  };
+};
 
-// 4. Feature State
-export interface FeatureRegistry {
-  "auth": { token: string | null };
-}
 ```
-
-</details>
 
 ---
 
 ## 🚀 Quick Start
 
-### 1️⃣ Create a Feature Module
+### 1️⃣ Initialize the System
 
-<details>
-<summary>Example: UsersFeature</summary>
+Use the `createPlugC` factory passing your Schema. This returns **strongly-typed hooks** bound to your specific application definitions.
 
-```ts
+```tsx
+// system.ts
+import { createPlugC } from 'plug-code';
+import type { AppSchema } from './types/AppSchema';
+
+// ✨ MAGIC HAPPENS HERE: We pass the Schema to the factory
+export const { 
+  api, 
+  SystemPlcRoot, 
+  useStore, 
+  useCommand, 
+  useSlot 
+} = createPlugC<AppSchema>();
+
+```
+
+### 2️⃣ Create a Feature Module
+
+Features use the typed hooks generated in the previous step.
+
+```tsx
+// features/UsersFeature.tsx
 import { ModuleManifest } from 'plug-code';
-import { useCommand, useStore } from '../framework/plcHooks';
+import { useStore, useCommand } from '../system'; 
 
 const UserList = () => {
-  const users = useStore("users:list", s => s); 
+  // TS knows "users:list" returns an array of users automatically
+  const users = useStore("users:list"); 
   const deleteCmd = useCommand("users:delete");
 
   return (
     <ul>
       {users.map(u => (
         <li key={u.id}>
-          {u.name} <button onClick={() => deleteCmd({ id: u.id })}>x</button>
+          {u.name} 
+          {/* TS enforces the correct payload { id: string } */}
+          <button onClick={() => deleteCmd({ id: u.id })}>x</button>
         </li>
       ))}
     </ul>
@@ -114,79 +121,137 @@ export const UsersFeature: ModuleManifest = {
     "main-layout": [{ id: "user-list-view", component: UserList, priority: 10 }]
   },
   onLoad: (api) => {
+    // Enable virtualization for large lists
     api.markVirtual("main-layout", { itemHeight: 50 });
   }
 };
+
 ```
 
-</details>
+### 3️⃣ Render the App
 
----
-
-### 2️⃣ Initialize the System
-
-<details>
-<summary>Example: main.tsx</summary>
-
-```ts
-import { PlcStore, PlcAPI, PlcProvider } from 'plug-code';
+```tsx
+// App.tsx
+import { api, SystemPlcRoot } from './system';
 import { UsersFeature } from './features/UsersFeature';
 
-const store = new PlcStore();
-const api = new PlcAPI(store);
-
+// Load features
 api.registerModule(UsersFeature);
 
 const App = () => (
-  <PlcProvider api={api}>
+  <SystemPlcRoot>
     <div className="app">
+      {/* Type-safe rendering */}
       {api.render("main-layout")}
     </div>
-  </PlcProvider>
+  </SystemPlcRoot>
 );
+
 ```
-
-</details>
-
----
 
 ## 📚 API Reference
 
-### 🧬 State Management (`api`)
+The `api` object exposes the full power of the Plug&Code runtime.
 
-* `createStore<K>(key, initial)`: Initialize a key in the root store.
-* `setStore<K>(key, updater, priority?, useTransition?)`: Update state using **Immer**. Supports React 18 concurrency.
-* `getStore<K>(key)`: Get a snapshot of the state.
-* `watch<K>(key, selector, callback)`: Listen to reactive changes outside components.
+### 🧬 Root State Management
 
-### 🎨 UI & Layout (`api.layout`)
+Methods to interact with the global registry keys.
 
-* `register(slot, id, component, priority, keepAlive)`: Inject a component in a slot.
+* **`createStore<K>(key, initial)`**
+Initializes a key in the root store.
+* **`getStore<K>(key)`**
+Returns the current snapshot of a value in the root store.
+* **`setStore<K>(key, updater, priority?, useTransition?)`**
+Updates the state.
+* `updater`: Can be a raw value or a callback `(draft) => void` (using **Immer**).
+* `priority`: Execution priority (`HIGH`, `MED`, `LOW`).
+* `useTransition`: Wraps the update in a React transition.
 
-  * `priority`: higher number = higher placement.
-  * `keepAlive`: keeps the component in memory (hidden DOM) between view changes.
-* `render(slot, props)`: Render slot content.
-* `markVirtual(slot, config)`: Transform a slot into a **high-performance virtual list** (supports 10k+ items).
 
-### 🧠 Logic & Commands
+### 📦 Feature State (Substores)
 
-* `registerCommand(id, fn)`: Register a global command.
-* `execute(id, payload)`: Execute a command and return a typed Promise.
-* `wrapCommand(id, middleware)`: Intercept commands (logging, confirmation, etc).
+Methods to manage isolated state within features (e.g., `"users:list"`).
 
-### ⚛️ React Hooks
+* **`createSubstore<F, K>(substore, key, initial)`**
+Initializes a specific key within a feature namespace.
+* **`getSubstore<F, K>(substore, key)`**
+Gets a value from a feature substore.
+* **`setSubstore<F, K>(substore, key, updater, ...)`**
+Updates a value in a feature substore using Immer drafts.
 
-* `useStore(key, selector)`: Reactive, selective state subscription.
-* `useCommand(id)`: Get an executable command function.
-* `useSlot(slot)`: Render a slot dynamically.
+### 🧠 Reactivity & Computed Values
 
+* **`deriveStore(outputKey, outputSlot, dependencies, calculator)`**
+Creates a **computed value** that automatically updates when dependencies change.
+* `outputKey`: The key where the result will be stored.
+* `dependencies`: Array of store keys to listen to.
+* `calculator`: Pure function `(...inputs) => result`.
+
+
+* **`deriveSubstore(substore, outputKey, outputSlot, dependencies, calculator)`**
+Same as `deriveStore` but scoped to a specific feature substore.
+* **`watch(key, selector, callback)`**
+Subscribes to changes in any store/substore key. useful for side effects (logging, analytics, etc).
+* **`watchAllStores(definitions, callback)`**
+Watches multiple keys across different stores/substores and triggers a callback when the combined state changes.
+
+### ⚡ Logic & Commands
+
+* **`registerCommand(id, fn)`**
+Registers a global executable action.
+* **`execute(id, payload)`**
+Executes a registered command. Returns a typed `Promise`.
+* **`wrapCommand(id, middleware)`**
+Wraps an existing command with middleware (e.g., for validation or logging) without modifying the original logic.
+
+### 🎨 UI Composition & Layout
+
+* **`register(slot, id, component, priority, keepAlive)`**
+Injects a React component into a UI Slot.
+* `priority`: Higher numbers render first.
+* `keepAlive`: If `true`, the DOM node is preserved (hidden) when removed from the view.
+
+
+* **`render(slot, props)`**
+Renders the content of a slot.
+* **`wrap(slot, wrapper)`**
+Wraps a slot with a container component (e.g., adding a `div` or `ContextProvider` around all slot items).
+* **`after(slot, targetId, newId, component)`**
+Injects a component immediately after a specific target ID within a slot.
+* **`markVirtual(slot, config)`**
+**High-Performance Mode:** Transforms the slot into a virtualized list.
+* `config`: `{ itemHeight: number, overscan?: number }`.
+
+
+* **`redraw(keyOrSlot)`**
+Forces a re-render of a specific slot or store subscriber.
+* **`connect(renderFn, dependencies)`**
+HOC (Higher-Order Component) that connects a raw component to the store.
+
+### 🔄 Data Pipeline (Transforms)
+
+* **`makeTransform<T>(channel, id, fn, priority)`**
+Registers a step in a data processing pipeline.
+* **`getTransform<T>(channel, initialData, context)`**
+Runs a pipeline asynchronously and returns the result. Caches results based on input equality.
+* **`receive(channel, initialData, context)`**
+Runs a synchronous pipeline. Throws if the pipeline contains async steps.
+
+### 🧩 Modules & Lifecycle
+
+* **`registerModule(manifest)`**
+Loads a `ModuleManifest` (State, UI, Commands) into the runtime.
+* **`loadFeature(importer)`**
+Helper for lazy-loading features (e.g., `() => import('./features/MyFeature')`).
+* **`createSelector(extractor, calculator)`**
+Creates a memoized selector for use with hooks or watchers.
 ---
 
 ## 🌟 Best Practices
 
-* **Define types first:** Everything starts in `registry.ts`.
+* **Schema First:** Define your data shape in `AppSchema` before coding.
 * **Atomic Features:** A feature should contain all it needs (Store, UI, Commands).
 * **Data-Driven UI:** Change the store, let watchers/hooks update the view.
-* **Use Virtualization:** For large or growing lists, call `api.markVirtual` in `onLoad`.
+* **Use Virtualization:** For large or growing lists, simply call `api.markVirtual` in `onLoad`.
 
 ---
