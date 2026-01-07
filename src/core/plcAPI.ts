@@ -58,8 +58,8 @@ export class PlcAPI {
     // Loaded features manager
     private loadedFeatures = new Set<string>();
 
-    constructor(store: PlcStore) {
-        this.store = store;
+    constructor() {
+        this.store = new PlcStore();
         this.pipeline = new PlcPipeline();
         this.scheduler = new Scheduler();
         this.layout = new PlcLayout();
