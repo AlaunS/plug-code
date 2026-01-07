@@ -11,8 +11,14 @@
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
     "isolatedModules": false,
-    "jsx": "react-jsx"
+    "declarationMap": true,
+    "sourceMap": true,
+    "jsx": "react-jsx",
+    "baseUrl": ".",
+    "paths": {
+      "*": ["src/*"]
+    }
   },
-  "include": ["src"],
+  "include": ["src/**/*"],
   "exclude": ["node_modules", "dist", "tests"]
 }

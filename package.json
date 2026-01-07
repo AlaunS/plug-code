@@ -1,18 +1,42 @@
 {
   "name": "plug-code",
   "version": "2.0.4",
-  "description": "",
+  "description": "A reactive state management and UI framework for React",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [
     "dist"
   ],
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./simple": {
+      "import": "./dist/simple.js",
+      "require": "./dist/simple.js",
+      "types": "./dist/simple.d.ts"
+    },
+    "./types": {
+      "import": "./dist/types/core/index.js",
+      "require": "./dist/types/core/index.js",
+      "types": "./dist/types/core/index.d.ts"
+    }
+  },
   "scripts": {
     "build": "tsc",
     "watch": "tsc --watch",
+    "prepublishOnly": "npm run build",
     "test": "jest"
   },
-  "keywords": [],
+  "keywords": [
+    "react",
+    "state-management",
+    "framework",
+    "reactive",
+    "ui"
+  ],
   "author": "",
   "license": "ISC",
   "type": "commonjs",

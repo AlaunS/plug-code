@@ -1,53 +1,11 @@
 import React from "react";
 import { PlcAPI } from "./core/plcAPI";
 import { PlcProvider, useCommand, useSlot, useStore } from "./core/hooks/plcHooks";
-import { Draft } from "immer";
+import { GetCmds, GetSlots, GetStore, PlcSchema, TypedPlcAPI } from "./types/core";
 
-type PlcSchema = {
-    store: Record<string, any>;
-    commands: Record<string, any>;
-    slots: Record<string, any>;
-};
-
-type GetStore<T extends PlcSchema> = T["store"] extends Record<string, any> ? T["store"] : {};
-type GetCmds<T extends PlcSchema> = T["commands"] extends Record<string, any> ? T["commands"] : {};
-type GetSlots<T extends PlcSchema> = T["slots"] extends Record<string, any> ? T["slots"] : {};
-
-type TypedPlcAPI<T extends PlcSchema> = Omit<PlcAPI, 'getStore' | 'setStore' | 'createStore' | 'execute' | 'render' | 'register'> & {
-
-    // Store Methods
-    createStore<K extends keyof GetStore<T> & string>(key: K, initial: GetStore<T>[K]): void;
-
-    getStore<K extends keyof GetStore<T> & string>(key: K): GetStore<T>[K];
-
-    setStore<K extends keyof GetStore<T> & string>(
-        key: K,
-        updater: GetStore<T>[K] | ((draft: Draft<GetStore<T>[K]>) => void | GetStore<T>[K]),
-        priority?: number,
-        useTransition?: boolean
-    ): void;
-
-    // Command Methods
-    execute<K extends keyof GetCmds<T> & string>(
-        id: K,
-        payload?: GetCmds<T>[K] extends { payload: infer P } ? P : void
-    ): Promise<GetCmds<T>[K] extends { result: infer R } ? R : void>;
-
-    // UI Methods
-    render<K extends keyof GetSlots<T> & string>(
-        slot: K,
-        props?: GetSlots<T>[K]
-    ): React.ReactNode;
-
-    register<K extends keyof GetSlots<T> & string>(
-        slot: K,
-        id: string,
-        componentFn: (props?: GetSlots<T>[K]) => React.ReactNode,
-        priority?: number,
-        keepAlive?: boolean
-    ): void;
-};
-
+// ----------------------
+// Advanced Mode
+// ----------------------
 export const createPlugC = <T extends PlcSchema>() => {
     const rawApi = new PlcAPI();
     const api = rawApi as unknown as TypedPlcAPI<T>;
