@@ -1,8 +1,8 @@
-# 🔌 Plug&Code (v2.1.2)
+# 🔌 Plug&Code (v2.3.1)
 
 **Plug&Code** is a **high-performance**, strongly-typed, **modular React framework**. It decouples **logic**, **UI**, and **data** via a **Feature-based architecture**.
 
-> **New in v2.1.2:** Choose your path! Start instantly with **Simple Mode** (Zero Config) or scale massively with **Enterprise Mode** (Schema-Based).
+> **New in v2.3.1:** Choose your path! Start instantly with **Simple Mode** (Zero Config) or scale massively with **Enterprise Mode** (Schema-Based).
 
 ---
 

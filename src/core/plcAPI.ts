@@ -1,5 +1,5 @@
 import React from "react";
-import { isEqual, shallowCompare } from "./helpers/core";
+import { shallowEqual, deepEqual } from "./helpers/core";
 import { CommandFn, CommandWrapper, transformerType } from "../types/core/api";
 import { ModuleManifest, ObjectType } from "../types/core/general"
 import { PlcPipeline } from "./plcPipeline";
@@ -167,8 +167,8 @@ export class PlcAPI {
         const equality = opts?.equality ?? 'identity';
 
         if (cached) {
-            const sameInput = equality === 'identity' ? cached.input === initialData : isEqual(cached.input, initialData);
-            const sameContext = shallowCompare(cached.contextArgs, context);
+            const sameInput = equality === 'identity' ? cached.input === initialData : shallowEqual(cached.input, initialData);
+            const sameContext = deepEqual(cached.contextArgs, context);
 
             if (sameInput && sameContext) {
                 let depsChanged = false;
@@ -297,10 +297,10 @@ export class PlcAPI {
             isComputing = true;
             try {
                 const inputs = dependencies.map(dep => this.getStore(dep));
-                if (lastInputs && inputs.every((v, i) => isEqual(v, lastInputs![i]))) return;
+                if (lastInputs && inputs.every((v, i) => shallowEqual(v, lastInputs![i]))) return;
 
                 const result = calculator(...inputs);
-                if (isEqual(result, lastOutput)) { lastInputs = inputs; return; }
+                if (shallowEqual(result, lastOutput)) { lastInputs = inputs; return; }
 
                 lastInputs = inputs;
                 lastOutput = result;
@@ -349,10 +349,10 @@ export class PlcAPI {
             isComputing = true;
             try {
                 const inputs = dependencies.map(dep => this.getSubstore(substore, dep as any));
-                if (lastInputs && inputs.every((v, i) => isEqual(v, lastInputs![i]))) return;
+                if (lastInputs && inputs.every((v, i) => shallowEqual(v, lastInputs![i]))) return;
 
                 const result = calculator(...inputs);
-                if (isEqual(result, lastOutput)) { lastInputs = inputs; return; }
+                if (shallowEqual(result, lastOutput)) { lastInputs = inputs; return; }
 
                 lastInputs = inputs;
                 lastOutput = result;
@@ -413,7 +413,7 @@ export class PlcAPI {
             const version = this._triggerVersion.get(storeKey) || 0;
             const newValue = selector(this.getStore(storeKey as any));
 
-            if (version !== prevVersion || !isEqual(newValue, prevValue)) {
+            if (version !== prevVersion || !shallowEqual(newValue, prevValue)) {
                 const old = prevValue;
                 prevValue = newValue;
                 prevVersion = version;
@@ -432,7 +432,7 @@ export class PlcAPI {
             const version = this._triggerVersion.get(storeKey) || 0;
             const newValue = selector(this.getSubstore(substore as any, key));
 
-            if (version !== prevVersion || !isEqual(newValue, prevValue)) {
+            if (version !== prevVersion || !shallowEqual(newValue, prevValue)) {
                 const old = prevValue;
                 prevValue = newValue;
                 prevVersion = version;
@@ -460,7 +460,7 @@ export class PlcAPI {
         let prevCombined = getCombinedState();
         const handleChange = () => {
             const currentCombined = getCombinedState();
-            if (!isEqual(prevCombined, currentCombined)) {
+            if (!shallowEqual(prevCombined, currentCombined)) {
                 const old = prevCombined;
                 prevCombined = currentCombined;
                 callback(currentCombined, old);
@@ -502,6 +502,13 @@ export class PlcAPI {
         this.layout.register(slot as string, id, componentFn, priority, keepAlive);
     }
 
+    registerMany<K extends SlotKey>(
+        slot: K,
+        items: { id: string; fn: (props?: any) => React.ReactNode; priority?: number; keepAlive?: boolean }[]
+    ) {
+        this.layout.registerMany(slot as string, items);
+    }
+
     wrap<K extends SlotKey>(slot: K, wrapper: SlotWrapper) {
         this.layout.wrap(slot as string, wrapper);
     }
@@ -524,7 +531,16 @@ export class PlcAPI {
         return this.layout.render(slot as string, props);
     }
 
-    markVirtual(slot: SlotKey, config?: { itemHeight?: number; overscan?: number }) {
+    markVirtual<K extends SlotKey>(
+        slot: K,
+        config?: {
+            itemHeight?: number;
+            overscan?: number;
+            initialEstimatedHeight?: number;
+            as?: any;
+            itemAs?: any;
+        }
+    ) {
         this.layout.markVirtual(slot as string, config);
     }
 
@@ -548,7 +564,7 @@ export class PlcAPI {
 
                     unsubscribers.push(this.store.subscribe(keyStr, () => {
                         const newVal = getValue();
-                        if (!isEqual(prevValuesRef.current.get(keyStr), newVal)) {
+                        if (!shallowEqual(prevValuesRef.current.get(keyStr), newVal)) {
                             prevValuesRef.current.set(keyStr, newVal);
                             forceUpdate();
                         }

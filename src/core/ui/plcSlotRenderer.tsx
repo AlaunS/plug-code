@@ -1,7 +1,7 @@
 import React from "react";
 import { ScopeContext, SlotItem } from "./plcLayout";
 import { SlotErrorBoundary } from "./plcErrorBoundary";
-import { shallowCompare } from "../helpers/core";
+import { shallowEqual } from "../helpers/core";
 
 export const SlotItemRenderer = React.memo(({
     item,
@@ -18,5 +18,5 @@ export const SlotItemRenderer = React.memo(({
         </SlotErrorBoundary>
     );
 }, (prev, next) => {
-    return prev.item === next.item && shallowCompare(prev.props, next.props);
+    return prev.item === next.item && shallowEqual(prev.props, next.props);
 });

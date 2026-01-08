@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { PlcAPI } from "../plcAPI";
 
 import {
@@ -42,22 +42,17 @@ export function useStore<F extends FeatureKey, K extends keyof SafeFeatureValue<
 
 export function useStore<T>(key: string, selector: (data: any) => T = (d) => d): T {
     const api = usePlcApi();
-
-    const [value, setValue] = useState(() => {
+    const getSnapshot = useCallback(() => {
         const storeVal = key.includes(":")
             ? api.getSubstore(...(key.split(":") as [string, string]))
             : api.getStore(key as any);
         return selector(storeVal);
-    });
-
-    useEffect(() => {
-        const unsubscribe = api.watch(key, selector, (newValue) => {
-            setValue(newValue);
-        });
-        return unsubscribe;
     }, [api, key, selector]);
 
-    return value;
+    return useSyncExternalStore(
+        (onStoreChange) => api.watch(key, selector, onStoreChange),
+        getSnapshot
+    );
 }
 
 export function useCommand<K extends CommandKey>(commandId: K) {

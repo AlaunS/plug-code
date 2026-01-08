@@ -45,17 +45,30 @@ export class PlcLayout {
 
     private renderCache = new Map<string, React.ReactNode>();
     private cacheVersion = new Map<string, number>();
+    private globalVersion = 0;
 
     // ---------------------------------------------------------
     // Virtualization
     // ---------------------------------------------------------
-    markVirtual(slot: string, config?: { itemHeight?: number; overscan?: number }) {
+    markVirtual(slot: string, config?: {
+        itemHeight?: number;
+        overscan?: number;
+        initialEstimatedHeight?: number;
+        as?: any; // Componente o etiqueta (p.ej. 'tbody')
+        itemAs?: any; // Etiqueta para cada fila (p.ej. 'tr')
+    }) {
+        const itemHeight = config?.itemHeight;
         this.virtualRegistry.set(slot, {
-            itemHeight: config?.itemHeight ?? 32,
-            overscan: config?.overscan ?? 6,
-            measured: !!config?.itemHeight,
-            estimatedHeight: config?.itemHeight ?? 32,
+            itemHeight,
+            overscan: config?.overscan ?? 5,
+            measured: !!itemHeight,
+            estimatedHeight: itemHeight ?? config?.initialEstimatedHeight ?? 48,
+            dynamicMeasurement: !itemHeight,
+            scrollTop: 0,
+            as: config?.as ?? 'div', // Por defecto div
+            itemAs: config?.itemAs ?? 'div'
         });
+        this.invalidate(slot);
     }
 
     // ---------------------------------------------------------
@@ -79,11 +92,38 @@ export class PlcLayout {
         }
 
         const list = this.slots.get(slot)!;
+        if (list.length > 1) {
+            list.sort((a, b) => b.priority - a.priority);
+        }
+
         const existingIdx = list.findIndex(x => x.id === id);
         const item: SlotItem = { id, priority, fn, keepAlive };
 
         if (existingIdx >= 0) list[existingIdx] = item;
         else list.push(item);
+
+        this.invalidate(slot);
+    }
+
+    registerMany(slot: string, items: { id: string; fn: (props?: any) => React.ReactNode; priority?: number; keepAlive?: boolean }[]) {
+        if (!this.slots.has(slot)) {
+            this.slots.set(slot, []);
+            this.cacheVersion.set(slot, 0);
+        }
+
+        const list = this.slots.get(slot)!;
+
+        items.forEach(item => {
+            const existingIdx = list.findIndex(x => x.id === item.id);
+            const newItem: SlotItem = {
+                priority: 0,
+                keepAlive: false,
+                ...item
+            };
+
+            if (existingIdx >= 0) list[existingIdx] = newItem;
+            else list.push(newItem);
+        });
 
         list.sort((a, b) => b.priority - a.priority);
         this.invalidate(slot);
@@ -106,13 +146,16 @@ export class PlcLayout {
     invalidate(slot?: string) {
         if (slot) {
             this.renderCache.delete(slot);
-            this.cacheVersion.set(slot, (this.cacheVersion.get(slot) || 0) + 1);
+            const current = this.cacheVersion.get(slot) || 0;
+            this.cacheVersion.set(slot, current + 1);
         } else {
             this.renderCache.clear();
-            for (const k of this.cacheVersion.keys()) {
-                this.cacheVersion.set(k, (this.cacheVersion.get(k) || 0) + 1);
-            }
+            this.globalVersion++;
         }
+    }
+
+    getSlotVersion(slot: string): number {
+        return (this.cacheVersion.get(slot) || 0) + this.globalVersion;
     }
 
     render(slot: string, props?: any): React.ReactNode {
@@ -130,25 +173,36 @@ export class PlcLayout {
     private renderBase(slot: string, props: any): React.ReactNode {
         const list = this.slots.get(slot) || [];
         const virtualConfig = this.virtualRegistry.get(slot);
+        const dataItems = props?.items;
 
-        if (virtualConfig && list.length > 0) {
-            const protectedItems = list.map(item => ({
-                ...item,
-                fn: (p: any) => (
-                    <SlotErrorBoundary id={item.id}>
-                        {item.fn(p)}
-                    </SlotErrorBoundary>
-                )
-            }));
-            const content = protectedItems.map((item, i) => (
-                <ScopeContext.Provider key={item.id} value={props}>
-                    {item.fn(props)}
-                </ScopeContext.Provider>
-            ));
+        if (virtualConfig && Array.isArray(dataItems)) {
+            const templateItem = list[0];
+
+            if (!templateItem) return null;
 
             return (
                 <VirtualContainer
-                    content={content}
+                    data={dataItems}
+                    renderItem={(item, index) => (
+                        <SlotErrorBoundary id={`${templateItem.id}-idx-${index}`}>
+                            {templateItem.fn(item)}
+                        </SlotErrorBoundary>
+                    )}
+                    config={virtualConfig}
+                    contextData={props}
+                />
+            );
+        }
+
+        if (virtualConfig && list.length > 0) {
+            return (
+                <VirtualContainer
+                    data={list}
+                    renderItem={(item: SlotItem) => (
+                        <SlotErrorBoundary id={item.id}>
+                            {item.fn(props)}
+                        </SlotErrorBoundary>
+                    )}
                     config={virtualConfig}
                     contextData={props}
                 />
@@ -159,13 +213,16 @@ export class PlcLayout {
             const isActive = props?.activeId ? props.activeId === item.id : true;
             if (!isActive && !item.keepAlive) return null;
 
+            const Container = (item as any).as || React.Fragment;
+
             return (
-                <div
-                    key={item.id}
-                    style={{ display: isActive ? undefined : 'none' }}
-                >
-                    <SlotItemRenderer item={item} props={props} />
-                </div>
+                <Container key={item.id}>
+                    <div style={{ display: isActive ? undefined : 'none' }}>
+                        <SlotErrorBoundary id={item.id}>
+                            <SlotItemRenderer item={item} props={props} />
+                        </SlotErrorBoundary>
+                    </div>
+                </Container>
             );
         });
     }

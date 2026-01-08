@@ -1,5 +1,5 @@
 import { produce, Draft } from "immer";
-import { isEqual } from "./helpers/core";
+import { shallowEqual } from "./helpers/core";
 
 export type Listener = () => void;
 export type keyListenerMap = Map<string, Set<Listener>>;
@@ -35,7 +35,7 @@ export class PlcStore {
             ? produce(prev, updater as any)
             : updater;
 
-        if (isEqual(prev, next)) return;
+        if (shallowEqual(prev, next)) return;
 
         this.storeData.set(key, next);
         this.markDirty(key);
@@ -71,7 +71,7 @@ export class PlcStore {
             ? produce(prev, updater as any)
             : updater;
 
-        if (isEqual(prev, next)) return;
+        if (shallowEqual(prev, next)) return;
         
         fStore.set(key, next);
         this.markDirty(`${substore}:${key}`);
