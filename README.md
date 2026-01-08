@@ -1,11 +1,3 @@
-Based on the code files you provided (`simple.tsx`, `plcAPI.ts`, etc.) and the template you requested, I have generated the final **README.md**.
-
-**Note on technical accuracy:** I noticed in your `simple.tsx` file that the function returned is named **`createModule`**, but in your previous template, it was called `createFeature`. I have updated the documentation below to use **`createModule`** so that it matches the actual code you provided.
-
-Here is the complete file:
-
----
-
 # 🔌 Plug&Code (v2.1.1)
 
 **Plug&Code** is a **high-performance**, strongly-typed, **modular React framework**. It decouples **logic**, **UI**, and **data** via a **Feature-based architecture**.
