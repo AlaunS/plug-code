@@ -10,9 +10,7 @@ import { PlcLayout } from "./ui/plcLayout";
 import { SlotWrapper } from "../types/core/ui";
 
 import {
-    RootStoreRegistry,
     CommandRegistry,
-    SlotRegistry,
     FeatureRegistry,
     StoreKey,
     CommandKey,
@@ -49,14 +47,15 @@ export class PlcAPI {
     public layout: PlcLayout;
 
     private compiledPipelines = new Map<string, (input: any, ctx: any) => Promise<any>>();
+    private moduleAssets = new Map<string, Array<{ slot: string, id: string }>>();
     private receiveCache = new LRUCache<string, ReceiveCacheEntry>(300);
 
     // Comandos registry
     private commands = new Map<string, CommandFn>();
     private activeDependencyTracker: Map<string, any> | null = null;
 
-    // Loaded features manager
-    private loadedFeatures = new Set<string>();
+    // Loaded modules manager
+    private loadedModules = new Set<string>();
 
     constructor() {
         this.store = new PlcStore();
@@ -400,8 +399,8 @@ export class PlcAPI {
 
     watch(key: string, selector: (data: any) => any, callback: (newValue: any, oldValue: any) => void) {
         if (key.includes(":")) {
-            const [feature, subKey] = key.split(":");
-            return this.watchSubstore(feature as any, subKey, selector, callback);
+            const [module, subKey] = key.split(":");
+            return this.watchSubstore(module as any, subKey, selector, callback);
         }
         return this.watchStore(key, selector, callback);
     }
@@ -567,16 +566,27 @@ export class PlcAPI {
     // Modules
     // ----------------------
     registerModule(manifest: ModuleManifest) {
-        if (this.loadedFeatures.has(manifest.name)) return;
-        if (manifest.state) {
+        const moduleName = manifest.name;
+        const isUpdate = this.loadedModules.has(moduleName);
+
+        const previousAssets = this.moduleAssets.get(moduleName) || [];
+
+        const currentAssets: Array<{ slot: string, id: string }> = [];
+        this.moduleAssets.set(moduleName, currentAssets);
+
+        const track = (slot: string, id: string) => {
+            currentAssets.push({ slot, id });
+        };
+
+        if (manifest.state && !isUpdate) {
             Object.entries(manifest.state).forEach(([key, val]) => {
-                this.createSubstore(manifest.name as any, key as any, val);
+                this.createSubstore(moduleName as any, key as any, val);
             });
         }
 
         if (manifest.commands) {
             Object.entries(manifest.commands).forEach(([cmdId, fn]) => {
-                const fullId = cmdId.includes(":") ? cmdId : `${manifest.name}:${cmdId}`;
+                const fullId = cmdId.includes(":") ? cmdId : `${moduleName}:${cmdId}`;
                 this.commands.set(fullId, fn);
             });
         }
@@ -584,17 +594,36 @@ export class PlcAPI {
         if (manifest.slots) {
             Object.entries(manifest.slots).forEach(([slotName, components]) => {
                 components.forEach(comp => {
-                    this.register(slotName as unknown as any, comp.id, comp.component, comp.priority, comp.keepAlive);
+                    this.register(slotName as any, comp.id, comp.component, comp.priority, comp.keepAlive);
+                    track(slotName, comp.id);
                 });
             });
         }
 
         if (manifest.onLoad) {
-            manifest.onLoad(this);
+            manifest.onLoad();
         }
 
-        this.loadedFeatures.add(manifest.name);
-        console.debug(`[PlcAPI] Feature loaded: ${manifest.name}`);
+        if (isUpdate) {
+            previousAssets.forEach(prev => {
+                const stillExists = currentAssets.some(curr =>
+                    curr.slot === prev.slot && curr.id === prev.id
+                );
+
+                if (!stillExists) {
+                    console.debug(`[PlcAPI] Cleaning up removed slot item: ${prev.slot} / ${prev.id}`);
+                    this.layout.unregister(prev.slot, prev.id);
+                }
+            });
+        }
+
+        this.loadedModules.add(moduleName);
+
+        if (!isUpdate) {
+            console.debug(`[PlcAPI] Module loaded: ${moduleName}`);
+        } else {
+            console.debug(`[PlcAPI] Module updated (HMR): ${moduleName}`);
+        }
     }
 
     async loadFeature(importer: () => Promise<{ default: ModuleManifest }>) {
@@ -602,7 +631,7 @@ export class PlcAPI {
             const module = await importer();
             this.registerModule(module.default);
         } catch (err) {
-            console.error(`[PlcAPI] Failed to load feature`, err);
+            console.error(`[PlcAPI] Failed to load module`, err);
             throw err;
         }
     }

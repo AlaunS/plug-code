@@ -6,9 +6,19 @@ import { GetCmds, GetSlots, GetStore, PlcSchema, TypedPlcAPI } from "./types/cor
 // ----------------------
 // Advanced Mode
 // ----------------------
-export const createPlugC = <T extends PlcSchema>() => {
+export const createPlugC = <T extends PlcSchema>(
+    config?: {
+        initialState: GetStore<T>
+    }
+) => {
     const rawApi = new PlcAPI();
     const api = rawApi as unknown as TypedPlcAPI<T>;
+
+    if (config?.initialState) {
+        Object.entries(config.initialState).forEach(([key, value]) => {
+            rawApi.createStore(key as any, value);
+        });
+    }
 
     return {
         api,

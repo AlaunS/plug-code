@@ -4,14 +4,20 @@ Copyright (c) 2026 AlaunS
 
 All rights reserved.
 
-Permission is hereby granted to use this software for personal and commercial projects.
-You may modify the software for your own internal use.
+1. GRANT OF LICENSE
+Permission is hereby granted to use this software for personal and commercial projects. 
+You may modify the software for your own internal use and include compiled versions 
+of this software within your own applications.
 
+2. RESTRICTIONS
 You may NOT:
-- Redistribute this software or any modified version of it.
-- Sell, sublicense, publish, or share this software.
-- Use this software as the basis for another framework, library, or competing product.
+- Redistribute, sell, sublicense, or share this software in its source code form 
+  or as a standalone library/package.
+- Use this software, in whole or in part, as the basis for creating another framework, 
+  library, SDK, or competing development tool.
+- Reverse engineer, decompile, or disassemble the software to create a derivative product.
 
+3. DISCLAIMER
 This software is provided "as is", without warranty of any kind, express or implied,
 including but not limited to the warranties of merchantability, fitness for a
 particular purpose and noninfringement. In no event shall the author be liable

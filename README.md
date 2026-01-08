@@ -1,9 +1,16 @@
+Based on the code files you provided (`simple.tsx`, `plcAPI.ts`, etc.) and the template you requested, I have generated the final **README.md**.
 
-# 🔌 Plug&Code (v2.1)
+**Note on technical accuracy:** I noticed in your `simple.tsx` file that the function returned is named **`createModule`**, but in your previous template, it was called `createFeature`. I have updated the documentation below to use **`createModule`** so that it matches the actual code you provided.
+
+Here is the complete file:
+
+---
+
+# 🔌 Plug&Code (v2.1.1)
 
 **Plug&Code** is a **high-performance**, strongly-typed, **modular React framework**. It decouples **logic**, **UI**, and **data** via a **Feature-based architecture**.
 
-> **New in v2.1:** Choose your path! Start instantly with **Simple Mode** (Zero Config) or scale massively with **Enterprise Mode** (Schema-Based).
+> **New in v2.1.1:** Choose your path! Start instantly with **Simple Mode** (Zero Config) or scale massively with **Enterprise Mode** (Schema-Based).
 
 ---
 
@@ -18,7 +25,7 @@
 * **⚡ Native Performance:** Built-in virtual rendering (`markVirtual`) and priority management via **Scheduler**.
 * **🧠 Reactive State Machine:** Global & module-level state with **Immer** and granular subscriptions.
 * **🎨 UI Composition Pipeline:** Slots system with **multiple injections**, **priorities**, and **keepAlive** support.
-* **🛡️ Crash-Proof Slots:** Built-in **Error Boundaries** isolate every injected component. If one feature crashes, the rest of the application stays alive.
+* **🛡️ Crash-Proof Slots:** Built-in **Error Boundaries** isolate every injected component. If one module crashes, the rest of the application stays alive.
 
 ---
 
@@ -45,7 +52,7 @@ Use `createSimplePlugC` to define your state. Types are inferred automatically f
 // store.ts
 import { createSimplePlugC } from 'plug-code/simple';
 
-export const { Provider, useStore, useAction, setState } = createSimplePlugC({
+export const { Provider, useStore, useAction, createModule } = createSimplePlugC({
   initialState: {
     count: 0,
     user: { name: "Guest", loggedIn: false }
@@ -61,7 +68,8 @@ export const { Provider, useStore, useAction, setState } = createSimplePlugC({
     fetchData: async (draft) => {
        // ... logic
     }
-  }
+  },
+  options: { debug: true }
 });
 
 ```
@@ -87,19 +95,24 @@ export default () => (
 
 ```
 
-### 3️⃣ Modular Features (The "Plug" Concept)
+### 3️⃣ Modular Modules (The "Plug" Concept)
 
-Need to encapsulate a feature? Use `createFeature` to bundle State, View, and Logic into a portable unit.
+Need to encapsulate a module? Use `createModule` (returned from your store setup) to bundle State, View, and Logic into a portable unit.
 
 ```tsx
-// features/ChatFeature.tsx
-import { createFeature } from 'plug-code/simple';
+// modules/ChatFeature.tsx
+import { createModule } from '../store'; // Import from YOUR store
 
-export const ChatFeature = createFeature({
+export const ChatFeature = createModule({
   name: 'chat',
   state: { messages: [] as string[] },
   actions: {
-    send: (draft, msg: string) => draft.messages.push(msg)
+    // Arguments: (draft, payload, rootActions)
+    send: (draft, msg: string, root) => {
+        draft.messages.push(msg);
+        // You can even call root actions here:
+        // root.increment(); 
+    }
   },
   // Optional: Define a default View
   view: ({ state, actions }) => (
@@ -111,13 +124,7 @@ export const ChatFeature = createFeature({
 });
 
 // Usage inside App.tsx:
-// export default () => (
-//   <Provider>
-//     <ChatFeature.View />
-//     <Counter />
-//   </Provider>
-// );
-
+// <ChatFeature.View />
 
 ```
 
@@ -177,10 +184,10 @@ export const {
 
 ### 3️⃣ Create a Feature Module
 
-Features use the typed hooks generated in the previous step.
+Modules use the typed hooks generated in the previous step.
 
 ```tsx
-// features/UsersFeature.tsx
+// modules/UsersFeature.tsx
 import { ModuleManifest } from 'plug-code';
 import { useStore, useCommand } from '../system'; // Import YOUR typed hooks
 
@@ -211,7 +218,7 @@ export const UsersFeature: ModuleManifest = {
   slots: {
     "main-layout": [{ id: "user-list-view", component: UserList, priority: 10 }]
   },
-  onLoad: (api) => {
+  onLoad: () => {
     // Enable virtualization for large lists (10k+ items)
     api.markVirtual("main-layout", { itemHeight: 50 });
   }
@@ -221,13 +228,13 @@ export const UsersFeature: ModuleManifest = {
 
 ### 4️⃣ Register & Render
 
-Connect your features to the main application using `api.registerModule`.
+Connect your modules to the main application using `api.registerModule`.
 
 ```tsx
 // App.tsx
 import React from 'react';
 import { api, SystemPlcRoot } from './system'; // Singleton created in Step 2
-import { UsersFeature } from './features/UsersFeature';
+import { UsersFeature } from './modules/UsersFeature';
 
 // 🔌 Load the Feature into the runtime
 // This initializes state, registers commands, and injects the UI into 'main-layout'
@@ -272,21 +279,21 @@ Updates the state.
 
 ### 📦 Feature State (Substores)
 
-Methods to manage isolated state within features (e.g., `"users:list"`).
+Methods to manage isolated state within modules (e.g., `"users:list"`).
 
 * **`createSubstore<F, K>(substore, key, initial)`**
-Initializes a specific key within a feature namespace.
+Initializes a specific key within a module namespace.
 * **`getSubstore<F, K>(substore, key)`**
-Gets a value from a feature substore.
+Gets a value from a module substore.
 * **`setSubstore<F, K>(substore, key, updater, ...)`**
-Updates a value in a feature substore using Immer drafts.
+Updates a value in a module substore using Immer drafts.
 
 ### 🧠 Reactivity & Computed Values
 
 * **`deriveStore(outputKey, outputSlot, dependencies, calculator)`**
 Creates a **computed value** that automatically updates when dependencies change.
 * **`deriveSubstore(substore, outputKey, outputSlot, dependencies, calculator)`**
-Same as `deriveStore` but scoped to a specific feature substore.
+Same as `deriveStore` but scoped to a specific module substore.
 * **`watch(key, selector, callback)`**
 Subscribes to changes in any store/substore key. Useful for side effects (logging, analytics).
 * **`watchAllStores(definitions, callback)`**
@@ -320,6 +327,10 @@ api.wrap("sidebar", (children) => (
       {children}
    </ThemeProvider>
 ));
+
+```
+
+
 * **`after(slot, targetId, newId, component)`**
 Injects a component immediately after a specific target ID within a slot.
 * **`markVirtual(slot, config)`**
@@ -346,7 +357,7 @@ Runs a synchronous pipeline. Throws if the pipeline contains async steps.
 * **`registerModule(manifest)`**
 Loads a `ModuleManifest` (State, UI, Commands) into the runtime.
 * **`loadFeature(importer)`**
-Helper for lazy-loading features (e.g., `() => import('./features/MyFeature')`).
+Helper for lazy-loading modules (e.g., `() => import('./modules/MyFeature')`).
 * **`createSelector(extractor, calculator)`**
 Creates a memoized selector for use with hooks or watchers.
 
@@ -360,7 +371,7 @@ Plug&Code is built for stability. In large modular applications, a single buggy 
 
 Every component injected into a Slot is automatically wrapped in a `SlotErrorBoundary`.
 
-* **Isolation:** If a feature throws an error during render, only that specific slot item is replaced with a fallback error UI.
+* **Isolation:** If a module throws an error during render, only that specific slot item is replaced with a fallback error UI.
 * **Logging:** Errors are caught and logged automatically, making debugging modular systems easier.
 
 ### 🚦 Concurrent Mode & Scheduler
@@ -382,6 +393,6 @@ The framework manages updates using an internal **Priority Scheduler** fully com
 ## 🌟 Best Practices (Enterprise Mode)
 
 * **Schema First:** Define your data shape in `AppSchema` before coding.
-* **Atomic Features:** A feature should contain all it needs (Store, UI, Commands).
+* **Atomic Modules:** A module should contain all it needs (Store, UI, Commands).
 * **Data-Driven UI:** Change the store, let watchers/hooks update the view.
 * **Use Virtualization:** For large or growing lists, simply call `api.markVirtual` in `onLoad`.

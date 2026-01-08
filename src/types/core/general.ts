@@ -7,5 +7,5 @@ export type ModuleManifest = {
     state?: Record<string, any>;
     commands?: Record<string, CommandFn>;
     slots?: Record<string, { id: string, component: (props?: any) => React.ReactNode, priority?: number, keepAlive?: boolean }[]>;
-    onLoad?: (api: PlcAPI) => void;
+    onLoad?: () => void;
 };

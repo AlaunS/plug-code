@@ -1,6 +1,7 @@
 import React, { createContext, Component, ErrorInfo } from "react";
 import { SlotWrapper, VirtualConfig } from "../../types/core/ui";
 import { VirtualContainer } from "./plcCore";
+import { SlotItemRenderer } from "./plcSlotRenderer";
 
 export const ScopeContext = createContext<any>(undefined);
 
@@ -163,11 +164,7 @@ export class PlcLayout {
                     key={item.id}
                     style={{ display: isActive ? undefined : 'none' }}
                 >
-                    <SlotErrorBoundary id={item.id}>
-                        <ScopeContext.Provider value={props}>
-                            {item.fn(props)}
-                        </ScopeContext.Provider>
-                    </SlotErrorBoundary>
+                    <SlotItemRenderer item={item} props={props} />
                 </div>
             );
         });
