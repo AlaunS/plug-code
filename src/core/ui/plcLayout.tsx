@@ -54,8 +54,8 @@ export class PlcLayout {
         itemHeight?: number;
         overscan?: number;
         initialEstimatedHeight?: number;
-        as?: any; // Componente o etiqueta (p.ej. 'tbody')
-        itemAs?: any; // Etiqueta para cada fila (p.ej. 'tr')
+        as?: any;
+        itemAs?: any;
     }) {
         const itemHeight = config?.itemHeight;
         this.virtualRegistry.set(slot, {
@@ -65,7 +65,7 @@ export class PlcLayout {
             estimatedHeight: itemHeight ?? config?.initialEstimatedHeight ?? 48,
             dynamicMeasurement: !itemHeight,
             scrollTop: 0,
-            as: config?.as ?? 'div', // Por defecto div
+            as: config?.as ?? 'div',
             itemAs: config?.itemAs ?? 'div'
         });
         this.invalidate(slot);

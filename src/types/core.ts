@@ -16,7 +16,6 @@ type GetCmdResult<T, K extends keyof T> = T[K] extends { result: infer R } ? R :
 
 export type TypedPlcAPI<T extends PlcSchema> = Omit<PlcAPI, 'getStore' | 'setStore' | 'createStore' | 'execute' | 'render' | 'register' | 'getSubstore' | 'setSubstore' | 'createSubstore' | 'execute' | 'registerCommand'> & {
 
-    // Store Methods
     createStore<K extends keyof GetStore<T> & string>(key: K, initial: GetStore<T>[K]): void;
 
     getSubstore<S extends string, K extends string>(substore: S, key: K): any;
@@ -30,7 +29,6 @@ export type TypedPlcAPI<T extends PlcSchema> = Omit<PlcAPI, 'getStore' | 'setSto
         useTransition?: boolean
     ): void;
 
-    // Command Methods
     registerCommand<K extends keyof T["commands"] & string>(
         id: K,
         fn: (payload: GetCmdPayload<T["commands"], K>) =>
@@ -38,13 +36,11 @@ export type TypedPlcAPI<T extends PlcSchema> = Omit<PlcAPI, 'getStore' | 'setSto
             | Promise<GetCmdResult<T["commands"], K>>
     ): void;
 
-    // 2. execute tipado
     execute<K extends keyof T["commands"] & string>(
         id: K,
         payload: GetCmdPayload<T["commands"], K>
     ): Promise<GetCmdResult<T["commands"], K>>;
 
-    // UI Methods
     render<K extends keyof GetSlots<T> & string>(
         slot: K,
         props?: GetSlots<T>[K]

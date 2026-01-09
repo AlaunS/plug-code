@@ -50,9 +50,10 @@ export class PlcAPI {
     private moduleAssets = new Map<string, Array<{ slot: string, id: string }>>();
     private receiveCache = new LRUCache<string, ReceiveCacheEntry>(300);
 
-    // Comandos registry
+    // Commands Registry
     private commands = new Map<string, CommandFn>();
     private activeDependencyTracker: Map<string, any> | null = null;
+    
 
     // Loaded modules manager
     private loadedModules = new Set<string>();
@@ -229,7 +230,7 @@ export class PlcAPI {
 
 
     // ----------------------
-    // Command System (SOLUCIÓN AQUI)
+    // Command System
     // ----------------------
     registerCommand<K extends CommandKey>(
         id: K,
