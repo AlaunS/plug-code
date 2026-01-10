@@ -5,9 +5,13 @@ import { ObjectType } from "./types/core/general";
 import { PlcProvider, useStore as useHookStore, useCommand } from "./core/hooks/plcHooks";
 
 type RemoveFirstArg<T extends any[]> = T extends [any, ...infer Rest] ? Rest : [];
+type WrapInPromise<T> = T extends Promise<infer U>
+    ? Promise<U>
+    : Promise<T>;
+
 type MapToExecutable<A> = {
-    [K in keyof A]: A[K] extends (...args: any) => any
-    ? (...args: RemoveFirstArg<Parameters<A[K]>>) => Promise<void>
+    [K in keyof A]: A[K] extends (...args: any) => infer R
+    ? (...args: RemoveFirstArg<Parameters<A[K]>>) => WrapInPromise<R>
     : never
 };
 
@@ -15,7 +19,7 @@ type ModuleActionFn<T, RootExec> = (
     draft: Draft<T>,
     payload: any,
     root: RootExec
-) => void | T | Promise<void>;
+) => void | T | Promise<void> | any;
 
 // ----------------------
 // Module Config Definition
@@ -29,7 +33,10 @@ export type ModuleConfig<
     name: string;
     state: T;
     actions?: A;
-    view?: (props: { state: T; actions: MapToExecutable<A> } & P) => React.ReactNode;
+    view?: (
+        moduleProps: { state: T; actions: MapToExecutable<A> },
+        externalProps: P
+    ) => React.ReactNode;
     slots?: Record<string, React.FC<any>>;
 };
 
@@ -59,7 +66,12 @@ export const createSimplePlugC = <
 
             api.registerCommand(commandId, async (payload?: any) => {
                 if (config.options?.debug) console.debug(`[RootAction] ${actionName}`, payload);
-                api.setStore("__simple_root", (draft: Draft<T>) => actionFn(draft, payload));
+
+                let result: any;
+                api.setStore("__simple_root", (draft: Draft<T>) => {
+                    result = actionFn(draft, payload);
+                });
+                return result;
             });
 
             rootActionsExecutable[actionName] = (payload?: any) => api.execute(commandId, payload);
@@ -89,9 +101,12 @@ export const createSimplePlugC = <
                 api.registerCommand(commandId, async (payload?: any) => {
                     if (config.options?.debug) console.debug(`[Module: ${moduleConfig.name}] Action: ${actionName}`, payload);
 
+                    let result: any;
                     api.setSubstore(moduleConfig.name, "__module_state", (draft: any) => {
-                        return actionFn(draft, payload, rootActionsExecutable);
+                        result = actionFn(draft, payload, rootActionsExecutable);
+                        return result;
                     });
+                    return result;
                 });
 
                 boundModuleActions[actionName] = (payload?: any) => api.execute(commandId, payload);
@@ -112,18 +127,22 @@ export const createSimplePlugC = <
             ) => Promise<void>;
         };
 
-        const ModuleView: React.FC<P> = React.memo((props: P) => {
+        const ModuleViewComponent = (externalProps: P) => {
             const state = useModuleState((s) => s);
 
             if (moduleConfig.view) {
-                return moduleConfig.view({
-                    state,
-                    actions: boundModuleActions as any,
-                    ...props
-                });
+                return moduleConfig.view(
+                    {
+                        state,
+                        actions: boundModuleActions as any
+                    },
+                    externalProps
+                ) as React.ReactElement | null;
             }
             return null;
-        });
+        };
+
+        const ModuleView = React.memo(ModuleViewComponent) as React.FC<P>;
 
         return {
             name: moduleConfig.name,

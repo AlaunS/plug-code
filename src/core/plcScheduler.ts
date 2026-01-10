@@ -13,8 +13,14 @@ export class Scheduler {
 
     schedule(fn: () => void, priority: Priority = "MED") {
         this.queue.get(priority)!.add(fn);
-        if (!this.isFlushing)
-            this.flush();
+
+        if (!this.isFlushing) {
+            if (priority === 'HIGH') {
+                this.flush();
+            } else {
+                queueMicrotask(() => this.flush());
+            }
+        }
     }
 
     private flush() {

@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useCallback, useRef, useSyncExternalStore } from "react";
 import { shallowEqual, deepEqual } from "./helpers/core";
 import { CommandFn, CommandWrapper, transformerType } from "../types/core/api";
 import { ModuleManifest, ObjectType } from "../types/core/general"
@@ -19,6 +19,7 @@ import {
     StoreValue,
     SlotProps
 } from "../types/registry";
+import { getWorkerPool, terminateWorkerPool } from "./workers/filterWorker";
 
 type ReceiveCacheEntry = {
     input: any,
@@ -39,6 +40,24 @@ type SafeFeatureValue<F, K> = F extends keyof FeatureRegistry
     ? (K extends keyof FeatureRegistry[F] ? FeatureRegistry[F][K] : any)
     : any;
 
+type ExtractStoreValue<T> = T extends StoreKey
+    ? StoreValue<T>
+    : T extends `${infer F}:${infer K}`
+    ? F extends FeatureKey
+    ? SafeFeatureValue<F, K>
+    : any
+    : any;
+
+type SelectorFn<Deps extends readonly (string | { store: string })[], R> = (
+    ...stores: {
+        [K in keyof Deps]: Deps[K] extends string
+        ? ExtractStoreValue<Deps[K]>
+        : Deps[K] extends { store: string }
+        ? ExtractStoreValue<Deps[K]['store']>
+        : never
+    }
+) => R;
+
 
 export class PlcAPI {
     private store: PlcStore;
@@ -53,7 +72,12 @@ export class PlcAPI {
     // Commands Registry
     private commands = new Map<string, CommandFn>();
     private activeDependencyTracker: Map<string, any> | null = null;
-    
+
+    // Filter Registry
+    private filterControllers = new Map<string, AbortController>();
+    private filterCache = new LRUCache<string, { indexMap: number[], resultCount: number }>(50);
+    private filterDebounceTimers = new Map<string, NodeJS.Timeout>();
+
 
     // Loaded modules manager
     private loadedModules = new Set<string>();
@@ -545,35 +569,98 @@ export class PlcAPI {
         this.layout.markVirtual(slot as string, config);
     }
 
-    connect(renderFn: (props?: any) => React.ReactNode, dependencies: Array<string | { store: string, keys?: string[] }>): React.FC<any> {
+    connect<
+        Deps extends readonly (StoreKey | `${FeatureKey}:${string}` | { store: StoreKey | `${FeatureKey}:${string}` })[],
+        R = any
+    >(
+        dependencies: Deps,
+        selector: SelectorFn<Deps, R>,
+        renderFn: (selectedData: R, props?: any) => React.ReactNode
+    ): React.FC<any> {
         return (props: any) => {
-            const [, forceUpdate] = React.useReducer(x => x + 1, 0);
-            const prevValuesRef = React.useRef<Map<string, any>>(new Map());
+            const cacheRef = useRef<{ args: any[], result: R } | null>(null);
+            const getCurrentValues = useCallback(() => {
+                return dependencies.map(dep => {
+                    const keyStr = typeof dep === 'string' ? dep : dep.store;
+                    if (keyStr.includes(":")) {
+                        const [substore, subKey] = keyStr.split(":");
+                        return this.getSubstore(substore as any, subKey);
+                    }
+                    return this.getStore(keyStr as any);
+                });
+            }, []);
 
-            React.useEffect(() => {
+            const getSnapshot = useCallback(() => {
+                const newArgs = getCurrentValues();
+
+                if (cacheRef.current &&
+                    newArgs.length === cacheRef.current.args.length &&
+                    newArgs.every((val, i) => val === cacheRef.current!.args[i])) {
+                    return cacheRef.current.result;
+                }
+
+                const newResult = selector(...newArgs as any);
+                cacheRef.current = { args: newArgs, result: newResult };
+                return newResult;
+            }, [getCurrentValues]);
+
+            const subscribe = useCallback((onStoreChange: () => void) => {
                 const unsubscribers: Array<() => void> = [];
-
                 dependencies.forEach(dep => {
                     const keyStr = typeof dep === 'string' ? dep : dep.store;
-                    const getValue = () => typeof dep === 'string'
-                        ? this.getStore(dep as any)
-                        : dep.store.includes(":")
-                            ? this.store.getSubstore(...(dep.store.split(":") as [string, string]))
-                            : this.getStore(dep.store as any);
-
-                    prevValuesRef.current.set(keyStr, getValue());
-
-                    unsubscribers.push(this.store.subscribe(keyStr, () => {
-                        const newVal = getValue();
-                        if (!shallowEqual(prevValuesRef.current.get(keyStr), newVal)) {
-                            prevValuesRef.current.set(keyStr, newVal);
-                            forceUpdate();
-                        }
-                    }));
+                    unsubscribers.push(this.store.subscribe(keyStr, onStoreChange));
                 });
-
                 return () => unsubscribers.forEach(u => u());
             }, []);
+
+            const selectedData = useSyncExternalStore(subscribe, getSnapshot);
+
+            return renderFn(selectedData, props);
+        };
+    }
+
+    connectSimple<
+        Deps extends readonly (StoreKey | `${FeatureKey}:${string}` | {
+            store: StoreKey | `${FeatureKey}:${string}`;
+            keys?: string[]
+        })[]
+    >(
+        dependencies: Deps,
+        renderFn: (props?: any) => React.ReactNode
+    ): React.FC<any> {
+        return (props: any) => {
+            const cacheRef = useRef<{ values: any[] } | null>(null);
+
+            const getSnapshot = useCallback(() => {
+                const currentValues = dependencies.map(dep => {
+                    const keyStr = typeof dep === 'string' ? dep : dep.store;
+                    if (keyStr.includes(":")) {
+                        const [substore, subKey] = keyStr.split(":");
+                        return this.getSubstore(substore as any, subKey);
+                    }
+                    return this.getStore(keyStr as any);
+                });
+
+                if (cacheRef.current &&
+                    currentValues.length === cacheRef.current.values.length &&
+                    currentValues.every((val, i) => val === cacheRef.current!.values[i])) {
+                    return cacheRef.current.values;
+                }
+
+                cacheRef.current = { values: currentValues };
+                return currentValues;
+            }, []);
+
+            const subscribe = useCallback((onStoreChange: () => void) => {
+                const unsubscribers: Array<() => void> = [];
+                dependencies.forEach(dep => {
+                    const keyStr = typeof dep === 'string' ? dep : dep.store;
+                    unsubscribers.push(this.store.subscribe(keyStr, onStoreChange));
+                });
+                return () => unsubscribers.forEach(u => u());
+            }, []);
+
+            useSyncExternalStore(subscribe, getSnapshot);
 
             return renderFn(props);
         };
@@ -671,6 +758,345 @@ export class PlcAPI {
             lastArgs = args;
             lastResult = result;
             return result;
+        };
+    }
+
+    //----------------------
+    // Filter Methods
+    //----------------------
+    filterStore<K extends StoreKey>(
+        sourceKey: K,
+        outputKey: StoreKey,
+        filterValue: string | number,
+        props: string[],
+        options?: {
+            debounce?: number;
+            matcher?: 'includes' | 'startsWith' | 'exact';
+            caseSensitive?: boolean;
+            batchSize?: number;
+            onProgress?: (progress: number, total: number) => void;
+            useWebWorker?: boolean | 'auto';
+            workerThreshold?: number;
+        }
+    ): () => void {
+        const opts = {
+            debounce: options?.debounce ?? 0,
+            matcher: options?.matcher ?? 'includes',
+            caseSensitive: options?.caseSensitive ?? false,
+            batchSize: options?.batchSize ?? 5000,
+            onProgress: options?.onProgress,
+            useWebWorker: options?.useWebWorker ?? 'auto',
+            workerThreshold: options?.workerThreshold ?? 5_000_000
+        };
+
+        const filterId = `${sourceKey}->${outputKey}`;
+        const normalizedFilter = opts.caseSensitive
+            ? String(filterValue)
+            : String(filterValue).toLowerCase();
+
+        this.cancelFilter(filterId);
+
+        if (opts.debounce > 0) {
+            const existingTimer = this.filterDebounceTimers.get(filterId);
+            if (existingTimer) clearTimeout(existingTimer);
+
+            return new Promise<() => void>((resolve) => {
+                const timer = setTimeout(() => {
+                    this.filterDebounceTimers.delete(filterId);
+                    const unsub = this.executeFilterWithWorkers(
+                        sourceKey,
+                        outputKey,
+                        normalizedFilter,
+                        props,
+                        opts as any,
+                        filterId
+                    );
+                    resolve(unsub);
+                }, opts.debounce);
+
+                this.filterDebounceTimers.set(filterId, timer);
+            }) as any;
+        }
+
+        return this.executeFilterWithWorkers(
+            sourceKey,
+            outputKey,
+            normalizedFilter,
+            props,
+            opts as any,
+            filterId
+        );
+    }
+
+    //----------------------
+    // Filter execution
+    //----------------------
+
+    private executeFilterWithWorkers(
+        sourceKey: StoreKey,
+        outputKey: StoreKey,
+        normalizedFilter: string,
+        props: string[],
+        opts: Required<Omit<NonNullable<Parameters<PlcAPI['filterStore']>[4]>, 'debounce' | 'onProgress'>> & {
+            onProgress?: (progress: number, total: number) => void;
+            useWebWorker: boolean | 'auto';
+            workerThreshold: number;
+        },
+        filterId: string
+    ): () => void {
+        const sourceData = this.getStore(sourceKey);
+
+        if (!Array.isArray(sourceData)) {
+            console.error(`[PlcApi - FilterStore] Source '${sourceKey}' is not an array`);
+            return () => { };
+        }
+
+        const totalItems = sourceData.length;
+
+        if (!normalizedFilter || normalizedFilter.trim() === '') {
+            this.setStore(outputKey, sourceData, "HIGH");
+            return () => { };
+        }
+
+        const cacheKey = `${filterId}:${normalizedFilter}`;
+        const cached = this.filterCache.get(cacheKey);
+
+        if (cached) {
+            console.debug(`[PlcApi - FilterStore] Cache HIT: ${cached.resultCount} results`);
+            const output = cached.indexMap.map(i => sourceData[i]);
+            this.setStore(outputKey, output, "HIGH");
+            return () => { };
+        }
+
+        const shouldUseWorkers = opts.useWebWorker === true ||
+            (opts.useWebWorker === 'auto' && totalItems >= opts.workerThreshold);
+
+        const controller = new AbortController();
+        this.filterControllers.set(filterId, controller);
+
+        const matcher = this.buildMatcher(normalizedFilter, opts.matcher, opts.caseSensitive);
+
+        if (shouldUseWorkers) {
+            console.debug(`[PlcApi - FilterStore] Using Web Workers for ${totalItems.toLocaleString()} items`);
+            this.runWorkerFilter(
+                sourceData,
+                props,
+                normalizedFilter,
+                opts,
+                controller.signal,
+                totalItems
+            ).then(indexMap => {
+                if (controller.signal.aborted) return;
+
+                this.filterCache.set(cacheKey, { indexMap, resultCount: indexMap.length });
+                const output = indexMap.map(i => sourceData[i]);
+                this.setStore(outputKey, output, "HIGH");
+
+                console.debug(`[PlcApi - FilterStore] Worker completed: ${indexMap.length}/${totalItems} results`);
+                this.filterControllers.delete(filterId);
+            }).catch(err => {
+                if (err.name !== 'AbortError') {
+                    console.error(`[PlcApi - FilterStore] Worker error, falling back to main thread:`, err);
+                    this.runChunkedFilter(sourceData, props, matcher, opts, controller.signal, totalItems)
+                        .then(indexMap => {
+                            if (controller.signal.aborted) return;
+                            this.filterCache.set(cacheKey, { indexMap, resultCount: indexMap.length });
+                            const output = indexMap.map(i => sourceData[i]);
+                            this.setStore(outputKey, output, "HIGH");
+                            this.filterControllers.delete(filterId);
+                        });
+                }
+            });
+        } else {
+            console.debug(`[PlcApi - FilterStore] Using main thread for ${totalItems.toLocaleString()} items`);
+            this.runChunkedFilter(
+                sourceData,
+                props,
+                matcher,
+                opts,
+                controller.signal,
+                totalItems
+            ).then(indexMap => {
+                if (controller.signal.aborted) return;
+
+                this.filterCache.set(cacheKey, { indexMap, resultCount: indexMap.length });
+                const output = indexMap.map(i => sourceData[i]);
+                this.setStore(outputKey, output, "HIGH");
+
+                console.debug(`[PlcApi - FilterStore] Completed: ${indexMap.length}/${totalItems} results`);
+                this.filterControllers.delete(filterId);
+            }).catch(err => {
+                if (err.name !== 'AbortError') {
+                    console.error(`[PlcApi - FilterStore] Error:`, err);
+                }
+            });
+        }
+
+        return () => this.cancelFilter(filterId);
+    }
+
+    //----------------------
+    // Web Worker execution
+    //----------------------
+
+    private async runWorkerFilter(
+        data: any[],
+        props: string[],
+        filter: string,
+        opts: {
+            matcher: string;
+            caseSensitive: boolean;
+            onProgress?: (progress: number, total: number) => void
+        },
+        signal: AbortSignal,
+        totalItems: number
+    ): Promise<number[]> {
+        const workerPool = getWorkerPool();
+        const workerCount = navigator.hardwareConcurrency || 4;
+        const chunkSize = Math.ceil(totalItems / workerCount);
+
+        const tasks: Promise<number[]>[] = [];
+
+        for (let i = 0; i < workerCount; i++) {
+            const startIdx = i * chunkSize;
+            const endIdx = Math.min(startIdx + chunkSize, totalItems);
+
+            if (startIdx >= totalItems) break;
+
+            tasks.push(
+                workerPool.executeTask(
+                    data,
+                    props,
+                    filter,
+                    opts.matcher,
+                    opts.caseSensitive,
+                    startIdx,
+                    endIdx
+                )
+            );
+        }
+
+        const results = await Promise.all(tasks);
+
+        const totalResultSize = results.reduce((acc, chunk) => acc + chunk.length, 0);
+        const finalIndices = new Uint32Array(totalResultSize);
+
+        let offset = 0;
+        for (const chunk of results) {
+            finalIndices.set(chunk, offset);
+            offset += chunk.length;
+        }
+
+        return Array.from(finalIndices);
+    }
+
+    //----------------------
+    // Chunked Processing
+    //----------------------
+
+    private async runChunkedFilter(
+        data: any[],
+        props: string[],
+        matcher: (value: string) => boolean,
+        opts: { batchSize: number; onProgress?: (progress: number, total: number) => void },
+        signal: AbortSignal,
+        totalItems: number
+    ): Promise<number[]> {
+        const indexMap: number[] = [];
+        const batchSize = opts.batchSize;
+        let processed = 0;
+
+        const YIELD_INTERVAL_MS = 8;
+        let lastYieldTime = performance.now();
+
+        for (let i = 0; i < data.length; i += batchSize) {
+            if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
+            if (performance.now() - lastYieldTime > YIELD_INTERVAL_MS) {
+                await new Promise(resolve => setTimeout(resolve, 0));
+                lastYieldTime = performance.now();
+            }
+            
+            const end = Math.min(i + batchSize, data.length);
+
+            for (let j = i; j < end; j++) {
+                const item = data[j];
+                for (let k = 0; k < props.length; k++) {
+                    const val = item[props[k]];
+                    if (val != null && matcher(String(val))) {
+                        indexMap.push(j);
+                        break;
+                    }
+                }
+            }
+
+            processed = end;
+
+            if (opts.onProgress) {
+                opts.onProgress(processed, totalItems);
+            }
+        }
+
+        return indexMap;
+    }
+
+    //----------------------
+    // Matcher Builders
+    //----------------------
+
+    private buildMatcher(
+        filter: string,
+        strategy: 'includes' | 'startsWith' | 'exact',
+        caseSensitive: boolean
+    ): (value: string) => boolean {
+        if (strategy === 'exact') {
+            return caseSensitive
+                ? (val: string) => val === filter
+                : (val: string) => val.toLowerCase() === filter;
+        }
+
+        if (strategy === 'startsWith') {
+            return caseSensitive
+                ? (val: string) => val.startsWith(filter)
+                : (val: string) => val.toLowerCase().startsWith(filter);
+        }
+
+        return caseSensitive
+            ? (val: string) => val.includes(filter)
+            : (val: string) => val.toLowerCase().includes(filter);
+    }
+
+    //----------------------
+    // Utilities
+    //----------------------
+
+    private cancelFilter(filterId: string) {
+        const controller = this.filterControllers.get(filterId);
+        if (controller) {
+            controller.abort();
+            this.filterControllers.delete(filterId);
+        }
+
+        const timer = this.filterDebounceTimers.get(filterId);
+        if (timer) {
+            clearTimeout(timer);
+            this.filterDebounceTimers.delete(filterId);
+        }
+    }
+
+    terminateWorkers() {
+        terminateWorkerPool();
+        console.debug('[PlcApi - FilterStore] Workers terminated');
+    }
+
+    clearFilterCache() {
+        this.filterCache.clear();
+        console.debug('[PlcApi - FilterStore] Cache cleared');
+    }
+
+    getFilterCacheStats() {
+        return {
+            size: (this.filterCache as any).map.size,
+            maxSize: (this.filterCache as any).maxEntries
         };
     }
 }

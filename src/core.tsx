@@ -48,6 +48,33 @@ export const createPlugC = <T extends PlcSchema>(
             type LocalProps = GetSlots<T>[K];
 
             return renderSlot as (props?: LocalProps) => React.ReactNode;
+        },
+
+        useConnect: <
+            Deps extends readonly (keyof GetStore<T> & string)[],
+            R = any
+        >(
+            dependencies: Deps,
+            selector: (...stores: {
+                [K in keyof Deps]: Deps[K] extends keyof GetStore<T>
+                ? GetStore<T>[Deps[K]]
+                : never
+            }) => R,
+            renderFn: (selectedData: R, props?: any) => React.ReactNode
+        ) => {
+            return api.connect(dependencies as any, selector as any, renderFn);
+        },
+
+        useConnectSimple: <
+            Deps extends readonly (keyof GetStore<T> & string | {
+                store: keyof GetStore<T> & string;
+                keys?: string[]
+            })[]
+        >(
+            dependencies: Deps,
+            renderFn: (props?: any) => React.ReactNode
+        ) => {
+            return api.connectSimple(dependencies as any, renderFn);
         }
     };
 }
